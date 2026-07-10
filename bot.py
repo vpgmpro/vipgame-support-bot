@@ -1,28 +1,15 @@
-# bot.py - исправленная версия для python-telegram-bot==20.3
+# bot.py - упрощенная и РАБОЧАЯ версия для python-telegram-bot==13.7
 
 import logging
 import json
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
-from telegram.ext import (
-    Updater,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    CallbackContext
-)
-from telegram.ext.filters import TEXT, COMMAND
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 
-# Импортируем настройки
 from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE
 
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === РАБОТА С FAQ ===
 def load_faq():
     try:
         with open(FAQ_FILE, 'r', encoding='utf-8') as f:
@@ -46,8 +33,7 @@ def find_answer(question):
     
     return best_match if max_matches > 0 else None
 
-# === ОБРАБОТЧИКИ ===
-def start(update: Update, context: CallbackContext):
+def start(update: Update, context):
     user = update.effective_user
     keyboard = [
         [InlineKeyboardButton("📋 Частые вопросы", callback_data="faq")],
@@ -61,7 +47,7 @@ def start(update: Update, context: CallbackContext):
         reply_markup=reply_markup
     )
 
-def faq_list(update: Update, context: CallbackContext):
+def faq_list(update: Update, context):
     query = update.callback_query
     query.answer()
     
@@ -77,13 +63,13 @@ def faq_list(update: Update, context: CallbackContext):
     
     query.edit_message_text(text)
 
-def operator_request(update: Update, context: CallbackContext):
+def operator_request(update: Update, context):
     query = update.callback_query
     query.answer()
     query.edit_message_text("✏️ Напишите ваш вопрос, я перешлю его оператору.")
     context.user_data['waiting_for_operator'] = True
 
-def handle_message(update: Update, context: CallbackContext):
+def handle_message(update: Update, context):
     user = update.effective_user
     question = update.message.text
     
@@ -109,7 +95,7 @@ def handle_message(update: Update, context: CallbackContext):
         )
         update.message.reply_text("🤔 Я не знаю ответа, но передал вопрос оператору!")
 
-def admin_reply(update: Update, context: CallbackContext):
+def admin_reply(update: Update, context):
     if update.effective_user.id != ADMIN_CHAT_ID:
         update.message.reply_text("⛔ Нет прав")
         return
@@ -128,15 +114,13 @@ def admin_reply(update: Update, context: CallbackContext):
         update.message.reply_text(f"❌ Ошибка: {e}")
 
 def main():
-    # Создаем бота и передаем токен
-    bot = Bot(token=TOKEN)
-    updater = Updater(bot=bot, use_context=True)  # ← ИСПРАВЛЕНО
-    
+    # Для версии 13.7 такой синтаксис является правильным
+    updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
     
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("reply", admin_reply))
-    dp.add_handler(MessageHandler(TEXT & ~COMMAND, handle_message))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
     dp.add_handler(CallbackQueryHandler(faq_list, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     
