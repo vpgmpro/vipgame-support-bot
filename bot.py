@@ -1,4 +1,4 @@
-# bot.py - автоматический push на GitHub
+# bot.py - Полная версия с кнопками для ответа и добавления в базу знаний
 
 import logging
 import json
@@ -32,7 +32,6 @@ def load_faq():
         return []
 
 def save_faq_local(faq_list):
-    """Сохраняет локально"""
     try:
         with open(FAQ_FILE, 'w', encoding='utf-8') as f:
             json.dump({'faq': faq_list}, f, ensure_ascii=False, indent=2)
@@ -42,17 +41,14 @@ def save_faq_local(faq_list):
         return False
 
 def push_to_github():
-    """Отправляет faq.json на GitHub"""
     if not GITHUB_TOKEN:
         logger.warning("GitHub токен не настроен, пропускаем push")
         return False, "❌ GitHub токен не настроен"
     
     try:
-        # Читаем локальный файл
         with open(FAQ_FILE, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # Получаем текущий SHA файла на GitHub
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
         headers = {
             'Authorization': f'token {GITHUB_TOKEN}',
@@ -65,7 +61,6 @@ def push_to_github():
         else:
             return False, f"❌ Не удалось получить SHA: {response.status_code}"
         
-        # Обновляем файл
         data = {
             'message': 'Update faq.json from bot',
             'content': base64.b64encode(content.encode('utf-8')).decode('utf-8'),
@@ -83,36 +78,6 @@ def push_to_github():
     except Exception as e:
         logger.error(f"Ошибка push: {e}")
         return False, f"❌ Ошибка: {e}"
-
-def sync_with_github():
-    """Скачивает актуальную версию с GitHub и обновляет локальную"""
-    if not GITHUB_TOKEN:
-        return False, "❌ GitHub токен не настроен"
-    
-    try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
-        headers = {
-            'Authorization': f'token {GITHUB_TOKEN}',
-            'Accept': 'application/vnd.github.v3+json'
-        }
-        
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            content = base64.b64decode(data['content']).decode('utf-8')
-            
-            with open(FAQ_FILE, 'w', encoding='utf-8') as f:
-                f.write(content)
-            
-            logger.info("✅ Синхронизация с GitHub выполнена")
-            return True, "✅ Синхронизация выполнена!"
-        else:
-            return False, f"❌ Ошибка GitHub: {response.status_code}"
-            
-    except Exception as e:
-        return False, f"❌ Ошибка: {e}"
-
-# === КОМАНДЫ ===
 
 def is_admin(user_id):
     return user_id == ADMIN_CHAT_ID
@@ -143,14 +108,13 @@ def help_command(update: Update, context):
     
     if is_admin_user:
         text += "🔐 Команды администратора:\n"
-        text += "  /addfaq ключи | ответ - Добавить FAQ (авто-сохранение на GitHub)\n"
-        text += "  /delfaq ID - Удалить FAQ (авто-сохранение на GitHub)\n"
-        text += "  /editfaq ID | новый_ответ - Изменить ответ\n"
+        text += "  /addfaq ключи | ответ - Добавить FAQ\n"
+        text += "  /editfaq ID | новый_ответ - Изменить FAQ\n"
+        text += "  /delfaq ID - Удалить FAQ\n"
         text += "  /listfaq - Показать все FAQ\n"
         text += "  /reply ID Текст - Ответить пользователю\n"
         text += "  /sync - Синхронизировать с GitHub\n"
         text += "  /stats - Статистика\n\n"
-        
         text += "📝 Примеры:\n"
         text += "  /addfaq цена,стоимость | 1000 рублей\n"
         text += "  /editfaq 5 | Новая цена: 1500 рублей\n"
@@ -166,7 +130,6 @@ def help_command(update: Update, context):
         update.message.reply_text(text)
 
 def add_faq(update: Update, context):
-    """Добавляет FAQ и автоматически пушит на GitHub"""
     if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
@@ -193,7 +156,6 @@ def add_faq(update: Update, context):
             update.message.reply_text("❌ Ключевые слова и ответ не могут быть пустыми.")
             return
         
-        # Сохраняем локально
         faq_list = load_faq()
         new_id = max([item.get('id', 0) for item in faq_list], default=0) + 1
         faq_list.append({
@@ -203,7 +165,6 @@ def add_faq(update: Update, context):
         })
         save_faq_local(faq_list)
         
-        # Отправляем на GitHub
         success, message = push_to_github()
         
         if success:
@@ -216,52 +177,14 @@ def add_faq(update: Update, context):
         else:
             update.message.reply_text(
                 f"⚠️ FAQ добавлен локально, но не загружен на GitHub.\n"
-                f"❌ Ошибка: {message}\n\n"
-                f"Попробуйте позже или используйте /sync"
+                f"❌ Ошибка: {message}"
             )
         
     except Exception as e:
         logger.error(f"Ошибка добавления FAQ: {e}")
         update.message.reply_text(f"❌ Ошибка: {e}")
 
-def delete_faq(update: Update, context):
-    """Удаляет FAQ и автоматически пушит на GitHub"""
-    if not is_admin(update.effective_user.id):
-        update.message.reply_text("⛔ У вас нет прав администратора.")
-        return
-    
-    try:
-        parts = update.message.text.split(' ')
-        if len(parts) < 2:
-            update.message.reply_text("❌ Используйте: /delfaq ID")
-            return
-        
-        faq_id = int(parts[1])
-        
-        # Удаляем локально
-        faq_list = load_faq()
-        faq_list = [item for item in faq_list if item.get('id') != faq_id]
-        save_faq_local(faq_list)
-        
-        # Отправляем на GitHub
-        success, message = push_to_github()
-        
-        if success:
-            update.message.reply_text(f"✅ FAQ #{faq_id} удален!\n🔗 {message}")
-        else:
-            update.message.reply_text(
-                f"⚠️ FAQ #{faq_id} удален локально, но не загружен на GitHub.\n"
-                f"❌ Ошибка: {message}"
-            )
-        
-    except ValueError:
-        update.message.reply_text("❌ ID должен быть числом.")
-    except Exception as e:
-        logger.error(f"Ошибка удаления FAQ: {e}")
-        update.message.reply_text(f"❌ Ошибка: {e}")
-
 def edit_faq(update: Update, context):
-    """Редактирует FAQ и автоматически пушит на GitHub"""
     if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
@@ -288,7 +211,6 @@ def edit_faq(update: Update, context):
             update.message.reply_text("❌ Ответ не может быть пустым.")
             return
         
-        # Изменяем локально
         faq_list = load_faq()
         found = False
         for faq in faq_list:
@@ -303,7 +225,6 @@ def edit_faq(update: Update, context):
         
         save_faq_local(faq_list)
         
-        # Отправляем на GitHub
         success, message = push_to_github()
         
         if success:
@@ -324,24 +245,37 @@ def edit_faq(update: Update, context):
         logger.error(f"Ошибка редактирования FAQ: {e}")
         update.message.reply_text(f"❌ Ошибка: {e}")
 
-def sync_command(update: Update, context):
-    """Принудительная синхронизация с GitHub"""
+def delete_faq(update: Update, context):
     if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
     
-    update.message.reply_text("🔄 Синхронизация с GitHub...")
-    
-    success, message = sync_with_github()
-    
-    if success:
+    try:
+        parts = update.message.text.split(' ')
+        if len(parts) < 2:
+            update.message.reply_text("❌ Используйте: /delfaq ID")
+            return
+        
+        faq_id = int(parts[1])
         faq_list = load_faq()
-        update.message.reply_text(
-            f"✅ {message}\n"
-            f"📊 Всего FAQ: {len(faq_list)}"
-        )
-    else:
-        update.message.reply_text(f"❌ {message}")
+        faq_list = [item for item in faq_list if item.get('id') != faq_id]
+        save_faq_local(faq_list)
+        
+        success, message = push_to_github()
+        
+        if success:
+            update.message.reply_text(f"✅ FAQ #{faq_id} удален!\n🔗 {message}")
+        else:
+            update.message.reply_text(
+                f"⚠️ FAQ #{faq_id} удален локально, но не загружен на GitHub.\n"
+                f"❌ Ошибка: {message}"
+            )
+        
+    except ValueError:
+        update.message.reply_text("❌ ID должен быть числом.")
+    except Exception as e:
+        logger.error(f"Ошибка удаления FAQ: {e}")
+        update.message.reply_text(f"❌ Ошибка: {e}")
 
 def list_faq(update: Update, context):
     if not is_admin(update.effective_user.id):
@@ -349,7 +283,6 @@ def list_faq(update: Update, context):
         return
     
     faq_list = load_faq()
-    
     if not faq_list:
         update.message.reply_text("📋 База знаний пуста.")
         return
@@ -361,6 +294,56 @@ def list_faq(update: Update, context):
         answer = faq.get('answer', '')
         text += f"ID {faq_id}. {', '.join(keywords)}\n"
         text += f"📝 {answer[:100]}{'...' if len(answer) > 100 else ''}\n\n"
+    
+    update.message.reply_text(text)
+
+def sync_command(update: Update, context):
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    update.message.reply_text("🔄 Синхронизация с GitHub...")
+    
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
+        headers = {
+            'Authorization': f'token {GITHUB_TOKEN}',
+            'Accept': 'application/vnd.github.v3+json'
+        }
+        
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            content = base64.b64decode(data['content']).decode('utf-8')
+            
+            with open(FAQ_FILE, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            faq_list = load_faq()
+            update.message.reply_text(
+                f"✅ Синхронизация выполнена!\n"
+                f"📊 Всего FAQ: {len(faq_list)}"
+            )
+        else:
+            update.message.reply_text(f"❌ Ошибка GitHub: {response.status_code}")
+            
+    except Exception as e:
+        update.message.reply_text(f"❌ Ошибка: {e}")
+
+def stats_command(update: Update, context):
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    faq_list = load_faq()
+    total_faq = len(faq_list)
+    
+    text = f"📊 Статистика бота\n\n"
+    text += f"📝 Всего FAQ: {total_faq}\n"
+    text += f"👤 Админ ID: {ADMIN_CHAT_ID}\n"
+    text += f"🔗 GitHub: {'✅ настроен' if GITHUB_TOKEN else '❌ не настроен'}\n"
+    text += f"⏰ Бот активен и работает\n"
+    text += f"🔄 Статус: ✅ Онлайн"
     
     update.message.reply_text(text)
 
@@ -389,23 +372,6 @@ def admin_reply(update: Update, context):
     except Exception as e:
         update.message.reply_text(f"❌ Ошибка: {e}")
 
-def stats_command(update: Update, context):
-    if not is_admin(update.effective_user.id):
-        update.message.reply_text("⛔ У вас нет прав администратора.")
-        return
-    
-    faq_list = load_faq()
-    total_faq = len(faq_list)
-    
-    text = f"📊 Статистика бота\n\n"
-    text += f"📝 Всего FAQ: {total_faq}\n"
-    text += f"👤 Админ ID: {ADMIN_CHAT_ID}\n"
-    text += f"🔗 GitHub: {'✅ настроен' if GITHUB_TOKEN else '❌ не настроен'}\n"
-    text += f"⏰ Бот активен и работает\n"
-    text += f"🔄 Статус: ✅ Онлайн"
-    
-    update.message.reply_text(text)
-
 def faq_list_callback(update: Update, context):
     query = update.callback_query
     query.answer()
@@ -430,31 +396,140 @@ def operator_request(update: Update, context):
 
 def send_to_admin(context, user, question):
     try:
+        # Создаем кнопки
+        keyboard = [
+            [
+                InlineKeyboardButton("📝 Ответить", callback_data=f"reply_{user.id}"),
+                InlineKeyboardButton("➕ В базу знаний", callback_data=f"addfaq_{user.id}")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         message_text = (
             f"❓ НОВЫЙ ВОПРОС\n\n"
             f"👤 Пользователь: @{user.username or user.first_name}\n"
             f"🆔 ID: {user.id}\n"
-            f"📝 Вопрос:\n{question}\n\n"
-            f"💡 Чтобы ответить:\n"
-            f"/reply {user.id} Ваш ответ\n\n"
-            f"✏️ Чтобы добавить в базу:\n"
-            f"/addfaq ключи | ответ"
+            f"📝 Вопрос:\n{question}"
         )
         
         context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
-            text=message_text
+            text=message_text,
+            reply_markup=reply_markup
         )
+        logger.info(f"Вопрос переслан админу: {user.id}")
         return True
     except Exception as e:
         logger.error(f"Не удалось отправить админу: {e}")
         return False
+
+def button_callback(update: Update, context):
+    """Обработка нажатий на кнопки"""
+    query = update.callback_query
+    query.answer()
+    
+    data = query.data
+    
+    if data.startswith('reply_'):
+        user_id = int(data.split('_')[1])
+        context.user_data['reply_to_user'] = user_id
+        query.edit_message_text(
+            f"✏️ Напишите ответ для пользователя {user_id}:\n\n"
+            f"Просто отправьте текст — бот перешлёт его."
+        )
+    
+    elif data.startswith('addfaq_'):
+        user_id = int(data.split('_')[1])
+        context.user_data['addfaq_user'] = user_id
+        
+        # Извлекаем вопрос из сообщения
+        original_message = query.message.text
+        try:
+            question = original_message.split('📝 Вопрос:\n')[-1]
+        except:
+            question = "Вопрос не найден"
+        context.user_data['addfaq_question'] = question
+        
+        query.edit_message_text(
+            f"✏️ Введите ключевые слова и ответ для вопроса:\n\n"
+            f"📝 Вопрос: {question}\n\n"
+            f"Формат: `ключевые_слова | ответ`\n"
+            f"Пример: `любовь,обожаю | Спасибо! 😊`"
+        )
+
+def handle_admin_message(update: Update, context):
+    """Обработка сообщений от админа в ответ на кнопки"""
+    user = update.effective_user
+    
+    if not is_admin(user.id):
+        return
+    
+    # Если админ отвечает пользователю
+    if context.user_data.get('reply_to_user'):
+        target_user_id = context.user_data['reply_to_user']
+        reply_text = update.message.text
+        
+        try:
+            context.bot.send_message(
+                chat_id=target_user_id,
+                text=f"📨 *Ответ поддержки:*\n\n{reply_text}"
+            )
+            update.message.reply_text(f"✅ Ответ отправлен пользователю {target_user_id}!")
+        except Exception as e:
+            update.message.reply_text(f"❌ Ошибка при отправке: {e}")
+        
+        context.user_data['reply_to_user'] = None
+        return
+    
+    # Если админ добавляет в базу знаний
+    if context.user_data.get('addfaq_user'):
+        try:
+            content = update.message.text
+            if '|' not in content:
+                update.message.reply_text(
+                    "❌ Используйте | для разделения ключевых слов и ответа.\n"
+                    "Например: `любовь,обожаю | Спасибо! 😊`"
+                )
+                return
+            
+            keywords_str, answer = content.split('|', 1)
+            keywords = [k.strip().lower() for k in keywords_str.split(',') if k.strip()]
+            answer = answer.strip()
+            
+            if not keywords or not answer:
+                update.message.reply_text("❌ Ключевые слова и ответ не могут быть пустыми.")
+                return
+            
+            # Добавляем в FAQ
+            faq_list = load_faq()
+            new_id = max([item.get('id', 0) for item in faq_list], default=0) + 1
+            faq_list.append({
+                'id': new_id,
+                'keywords': keywords,
+                'answer': answer
+            })
+            save_faq_local(faq_list)
+            push_to_github()
+            
+            update.message.reply_text(
+                f"✅ Добавлено в базу знаний (ID: {new_id})\n"
+                f"📌 Ключевые слова: {', '.join(keywords)}\n"
+                f"📝 Ответ: {answer}"
+            )
+            context.user_data['addfaq_user'] = None
+            context.user_data['addfaq_question'] = None
+        except Exception as e:
+            update.message.reply_text(f"❌ Ошибка: {e}")
 
 def handle_message(update: Update, context):
     user = update.effective_user
     question = update.message.text
     
     if question.startswith('/'):
+        return
+    
+    # Если админ в режиме ответа — перенаправляем
+    if context.user_data.get('reply_to_user') or context.user_data.get('addfaq_user'):
         return
     
     if context.user_data.get('waiting_for_operator'):
@@ -485,13 +560,12 @@ def handle_message(update: Update, context):
         sent = send_to_admin(context, user, question)
         if sent:
             update.message.reply_text(
-    "✅ Я передал ваш вопрос оператору!\n"
-    "⏳ Ожидайте ответа в ближайшее время.\n\n"
-    "Спасибо за терпение! 😊"
-)
+                "✅ Я передал ваш вопрос оператору!\n"
+                "⏳ Ожидайте ответа в ближайшее время.\n\n"
+                "Спасибо за терпение! 😊"
+            )
         else:
             update.message.reply_text(
-                "🤔 Я не знаю ответа на этот вопрос.\n\n"
                 "⚠️ К сожалению, не удалось связаться с оператором.\n"
                 "Пожалуйста, попробуйте позже."
             )
@@ -509,10 +583,10 @@ def main():
     
     # Команды для админа
     dp.add_handler(CommandHandler("reply", admin_reply))
-    dp.add_handler(CommandHandler("listfaq", list_faq))
     dp.add_handler(CommandHandler("addfaq", add_faq))
     dp.add_handler(CommandHandler("editfaq", edit_faq))
     dp.add_handler(CommandHandler("delfaq", delete_faq))
+    dp.add_handler(CommandHandler("listfaq", list_faq))
     dp.add_handler(CommandHandler("stats", stats_command))
     dp.add_handler(CommandHandler("sync", sync_command))
     
@@ -520,8 +594,15 @@ def main():
     dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
+    dp.add_handler(CallbackQueryHandler(button_callback))
     
-    # Обработчик сообщений
+    # Обработчик сообщений от админа (для ответа на кнопки)
+    dp.add_handler(MessageHandler(
+        Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
+        handle_admin_message
+    ))
+    
+    # Обработчик сообщений от всех
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
     
     dp.add_error_handler(error_handler)
@@ -530,12 +611,12 @@ def main():
     logger.info(f"📌 Админ ID: {ADMIN_CHAT_ID}")
     logger.info(f"🔑 GitHub токен: {'✅ настроен' if GITHUB_TOKEN else '❌ НЕ НАСТРОЕН'}")
     logger.info("📌 Команды администратора:")
-    logger.info("  /addfaq ключи | ответ - добавить (авто-сохранение)")
-    logger.info("  /editfaq ID | ответ - изменить (авто-сохранение)")
-    logger.info("  /delfaq ID - удалить (авто-сохранение)")
-    logger.info("  /sync - синхронизировать с GitHub")
+    logger.info("  /addfaq ключи | ответ - добавить")
+    logger.info("  /editfaq ID | ответ - изменить")
+    logger.info("  /delfaq ID - удалить")
     logger.info("  /listfaq - список FAQ")
     logger.info("  /reply ID Текст - ответить пользователю")
+    logger.info("  /sync - синхронизировать с GitHub")
     logger.info("  /stats - статистика")
     
     updater.start_polling()
