@@ -5,7 +5,7 @@ import os
 TOKEN = "8853582530:AAHNZcuShC7Aol1wnSL34p1X7_pb_jMfVic"  # Замените на ваш токен
 
 # ID администратора (узнать у @userinfobot)
-ADMIN_CHAT_ID = -5177697795  # Замените на ваш ID
+ADMIN_CHAT_ID = 8805394165  # Замените на ваш ID
 
 # Путь к файлу с FAQ
 FAQ_FILE = "faq.json"
