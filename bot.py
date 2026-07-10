@@ -1,4 +1,4 @@
-# bot.py - Полная версия с кнопками для ответа и добавления в базу знаний
+# bot.py - Полная версия с кнопками (ИСПРАВЛЕННАЯ)
 
 import logging
 import json
@@ -528,7 +528,7 @@ def handle_message(update: Update, context):
     if question.startswith('/'):
         return
     
-    # Если админ в режиме ответа — перенаправляем
+    # ЕСЛИ ЭТО АДМИН В РЕЖИМЕ ОТВЕТА — ПРОПУСКАЕМ
     if context.user_data.get('reply_to_user') or context.user_data.get('addfaq_user'):
         return
     
