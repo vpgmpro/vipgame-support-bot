@@ -1,3 +1,23 @@
+# bot.py - Добавьте это в начало файла, после других импортов
+
+from flask import Flask
+import threading
+import os
+
+# Создаем Flask-приложение
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return "🤖 Бот поддержки работает!"
+
+def run_flask():
+    """Запускает Flask-сервер в отдельном потоке"""
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+# Запускаем Flask в фоновом потоке (это не помешает боту)
+threading.Thread(target=run_flask, daemon=True).start()
 # bot.py
 import logging
 import json
