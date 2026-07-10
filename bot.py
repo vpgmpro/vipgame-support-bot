@@ -485,11 +485,10 @@ def handle_message(update: Update, context):
         sent = send_to_admin(context, user, question)
         if sent:
             update.message.reply_text(
-                "🤔 Я не знаю ответа на этот вопрос.\n\n"
-                "✅ Но я уже передал ваш вопрос оператору!\n"
-                "⏳ Ожидайте ответа в ближайшее время.\n\n"
-                "Спасибо за терпение! 😊"
-            )
+    "✅ Я передал ваш вопрос оператору!\n"
+    "⏳ Ожидайте ответа в ближайшее время.\n\n"
+    "Спасибо за терпение! 😊"
+)
         else:
             update.message.reply_text(
                 "🤔 Я не знаю ответа на этот вопрос.\n\n"
