@@ -1,8 +1,8 @@
-# bot.py - исправленная версия
+# bot.py - исправленная версия для python-telegram-bot==20.3
 
 import logging
 import json
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import (
     Updater,
     CommandHandler,
@@ -10,7 +10,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     CallbackContext
 )
-from telegram.ext.filters import TEXT, COMMAND  # ← ИСПРАВЛЕННЫЙ ИМПОРТ
+from telegram.ext.filters import TEXT, COMMAND
 
 # Импортируем настройки
 from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE
@@ -128,12 +128,15 @@ def admin_reply(update: Update, context: CallbackContext):
         update.message.reply_text(f"❌ Ошибка: {e}")
 
 def main():
-    updater = Updater(token=TOKEN, use_context=True)
+    # Создаем бота и передаем токен
+    bot = Bot(token=TOKEN)
+    updater = Updater(bot=bot, use_context=True)  # ← ИСПРАВЛЕНО
+    
     dp = updater.dispatcher
     
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("reply", admin_reply))
-    dp.add_handler(MessageHandler(TEXT & ~COMMAND, handle_message))  # ← ИСПРАВЛЕНО
+    dp.add_handler(MessageHandler(TEXT & ~COMMAND, handle_message))
     dp.add_handler(CallbackQueryHandler(faq_list, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     
