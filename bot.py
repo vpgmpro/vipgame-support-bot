@@ -1,4 +1,4 @@
-# bot.py - Полная версия бота поддержки (БЕЗ FLASK)
+# bot.py - исправленная версия
 
 import logging
 import json
@@ -8,9 +8,9 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
-    Filters,
     CallbackContext
 )
+from telegram.ext.filters import TEXT, COMMAND  # ← ИСПРАВЛЕННЫЙ ИМПОРТ
 
 # Импортируем настройки
 from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE
@@ -133,7 +133,7 @@ def main():
     
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("reply", admin_reply))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+    dp.add_handler(MessageHandler(TEXT & ~COMMAND, handle_message))  # ← ИСПРАВЛЕНО
     dp.add_handler(CallbackQueryHandler(faq_list, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     
