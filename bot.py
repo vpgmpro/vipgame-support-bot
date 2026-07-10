@@ -1,8 +1,8 @@
-# bot.py - с понятным ответом при неизвестном вопросе
+# bot.py - исправленная версия без ошибок Markdown
 
 import logging
 import json
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 
 from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE
@@ -66,38 +66,35 @@ def start(update: Update, context):
     )
 
 def help_command(update: Update, context):
-    """Команда /help - показывает все доступные команды"""
     user_id = update.effective_user.id
     is_admin_user = is_admin(user_id)
     
-    text = "📚 *Доступные команды:*\n\n"
-    text += "👤 *Для всех пользователей:*\n"
+    text = "📚 Доступные команды:\n\n"
+    text += "👤 Для всех пользователей:\n"
     text += "  /start - Начать диалог\n"
     text += "  /help - Показать это сообщение\n\n"
     
     if is_admin_user:
-        text += "🔐 *Команды администратора:*\n"
+        text += "🔐 Команды администратора:\n"
         text += "  /listfaq - Показать все FAQ\n"
         text += "  /addfaq ключи | ответ - Добавить FAQ\n"
         text += "  /delfaq ID - Удалить FAQ\n"
         text += "  /reply ID Текст - Ответить пользователю\n"
         text += "  /stats - Показать статистику\n\n"
         
-        text += "📝 *Примеры:*\n"
-        text += "  `/addfaq цена,стоимость | 1000 рублей`\n"
-        text += "  `/reply 123456789 Привет!`\n"
-        text += "  `/delfaq 5`\n"
+        text += "📝 Примеры:\n"
+        text += "  /addfaq цена,стоимость | 1000 рублей\n"
+        text += "  /reply 123456789 Привет!\n"
+        text += "  /delfaq 5\n"
     else:
-        text += "🔐 *Для администраторов:*\n"
-        text += "  Доступны дополнительные команды.\n"
-        text += "  Свяжитесь с поддержкой для получения прав.\n"
+        text += "🔐 Для администраторов доступны дополнительные команды.\n"
     
     if update.callback_query:
         query = update.callback_query
         query.answer()
-        query.edit_message_text(text, parse_mode='Markdown')
+        query.edit_message_text(text)
     else:
-        update.message.reply_text(text, parse_mode='Markdown')
+        update.message.reply_text(text)
 
 def faq_list(update: Update, context):
     query = update.callback_query
@@ -122,22 +119,22 @@ def operator_request(update: Update, context):
     context.user_data['waiting_for_operator'] = True
 
 def send_to_admin(context, user, question):
+    """Отправляет вопрос админу БЕЗ Markdown"""
     try:
         message_text = (
-            f"❓ *Новый вопрос*\n\n"
+            f"❓ НОВЫЙ ВОПРОС\n\n"
             f"👤 Пользователь: @{user.username or user.first_name}\n"
-            f"🆔 ID: `{user.id}`\n"
+            f"🆔 ID: {user.id}\n"
             f"📝 Вопрос:\n{question}\n\n"
-            f"💡 Чтобы ответить:\n"
-            f"`/reply {user.id} Ваш ответ`\n\n"
+            f"💡 Чтобы ответить, напишите:\n"
+            f"/reply {user.id} Ваш ответ\n\n"
             f"✏️ Чтобы добавить в базу знаний:\n"
-            f"`/addfaq ключи | ответ`"
+            f"/addfaq ключевые_слова | ответ"
         )
         
         context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
-            text=message_text,
-            parse_mode='Markdown'
+            text=message_text
         )
         logger.info(f"Вопрос переслан админу: {user.id}")
         return True
@@ -162,7 +159,7 @@ def handle_message(update: Update, context):
         else:
             update.message.reply_text(
                 "⚠️ Не удалось передать вопрос оператору.\n\n"
-                "Пожалуйста, попробуйте позже или свяжитесь с нами другим способом."
+                "Пожалуйста, попробуйте позже."
             )
         context.user_data['waiting_for_operator'] = False
         return
@@ -183,7 +180,7 @@ def handle_message(update: Update, context):
             update.message.reply_text(
                 "🤔 Я не знаю ответа на этот вопрос.\n\n"
                 "⚠️ К сожалению, не удалось связаться с оператором.\n"
-                "Пожалуйста, попробуйте позже или напишите нам другим способом."
+                "Пожалуйста, попробуйте позже."
             )
 
 def admin_reply(update: Update, context):
@@ -196,8 +193,7 @@ def admin_reply(update: Update, context):
         if len(parts) < 3:
             update.message.reply_text(
                 "❌ Используйте: /reply ID_пользователя Текст\n\n"
-                "Пример: `/reply 123456789 Привет!`",
-                parse_mode='Markdown'
+                "Пример: /reply 123456789 Привет!"
             )
             return
         
@@ -206,7 +202,7 @@ def admin_reply(update: Update, context):
         
         context.bot.send_message(
             chat_id=user_id,
-            text=f"📨 *Ответ поддержки:*\n\n{reply_text}\n\n"
+            text=f"📨 Ответ поддержки:\n\n{reply_text}\n\n"
                  f"✉️ Если у вас остались вопросы, просто напишите ещё раз."
         )
         update.message.reply_text(f"✅ Ответ отправлен пользователю {user_id}!")
@@ -228,15 +224,15 @@ def list_faq(update: Update, context):
         update.message.reply_text("📋 База знаний пуста.")
         return
     
-    text = "📚 *База знаний:*\n\n"
+    text = "📚 База знаний:\n\n"
     for faq in faq_list:
         faq_id = faq.get('id')
         keywords = faq.get('keywords', [])
         answer = faq.get('answer', '')
-        text += f"*ID {faq_id}. {', '.join(keywords)}*\n"
+        text += f"ID {faq_id}. {', '.join(keywords)}\n"
         text += f"📝 {answer[:100]}{'...' if len(answer) > 100 else ''}\n\n"
     
-    update.message.reply_text(text, parse_mode='Markdown')
+    update.message.reply_text(text)
 
 def add_faq(update: Update, context):
     if not is_admin(update.effective_user.id):
@@ -247,17 +243,15 @@ def add_faq(update: Update, context):
         parts = update.message.text.split(' ', 1)
         if len(parts) < 2:
             update.message.reply_text(
-                "❌ Использование: `/addfaq ключи | ответ`\n"
-                "Например: `/addfaq оплата,карта | Мы принимаем карты`",
-                parse_mode='Markdown'
+                "❌ Использование: /addfaq ключи | ответ\n"
+                "Например: /addfaq оплата,карта | Мы принимаем карты"
             )
             return
         
         content = parts[1]
         if '|' not in content:
             update.message.reply_text(
-                "❌ Используйте `|` для разделения ключевых слов и ответа.",
-                parse_mode='Markdown'
+                "❌ Используйте | для разделения ключевых слов и ответа."
             )
             return
         
@@ -296,7 +290,7 @@ def delete_faq(update: Update, context):
     try:
         parts = update.message.text.split(' ')
         if len(parts) < 2:
-            update.message.reply_text("❌ Используйте: `/delfaq ID`", parse_mode='Markdown')
+            update.message.reply_text("❌ Используйте: /delfaq ID")
             return
         
         faq_id = int(parts[1])
@@ -313,7 +307,6 @@ def delete_faq(update: Update, context):
         update.message.reply_text(f"❌ Ошибка: {e}")
 
 def stats_command(update: Update, context):
-    """Команда /stats - показывает статистику"""
     if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
@@ -321,13 +314,13 @@ def stats_command(update: Update, context):
     faq_list = load_faq()
     total_faq = len(faq_list)
     
-    text = f"📊 *Статистика бота*\n\n"
+    text = f"📊 Статистика бота\n\n"
     text += f"📝 Всего FAQ: {total_faq}\n"
     text += f"👤 Админ ID: {ADMIN_CHAT_ID}\n"
     text += f"⏰ Бот активен и работает\n"
     text += f"🔄 Статус: ✅ Онлайн"
     
-    update.message.reply_text(text, parse_mode='Markdown')
+    update.message.reply_text(text)
 
 def error_handler(update, context):
     logger.error(f'Update "{update}" вызвал ошибку "{context.error}"')
