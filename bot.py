@@ -1,4 +1,4 @@
-# bot.py - полная версия со всеми командами
+# bot.py - с понятным ответом при неизвестном вопросе
 
 import logging
 import json
@@ -47,22 +47,57 @@ def find_answer(question):
     return best_match if max_matches > 0 else None
 
 def is_admin(user_id):
-    """Проверяет, является ли пользователь админом"""
     return user_id == ADMIN_CHAT_ID
 
 def start(update: Update, context):
     user = update.effective_user
     keyboard = [
         [InlineKeyboardButton("📋 Частые вопросы", callback_data="faq")],
-        [InlineKeyboardButton("📞 Связаться с оператором", callback_data="operator")]
+        [InlineKeyboardButton("📞 Связаться с оператором", callback_data="operator")],
+        [InlineKeyboardButton("🆘 Помощь", callback_data="help")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     update.message.reply_text(
         f"👋 Привет, {user.first_name}!\n\n"
-        "Я бот поддержки. Напишите свой вопрос!",
+        "Я бот поддержки. Напишите свой вопрос!\n"
+        "Или нажмите 'Помощь' для списка команд.",
         reply_markup=reply_markup
     )
+
+def help_command(update: Update, context):
+    """Команда /help - показывает все доступные команды"""
+    user_id = update.effective_user.id
+    is_admin_user = is_admin(user_id)
+    
+    text = "📚 *Доступные команды:*\n\n"
+    text += "👤 *Для всех пользователей:*\n"
+    text += "  /start - Начать диалог\n"
+    text += "  /help - Показать это сообщение\n\n"
+    
+    if is_admin_user:
+        text += "🔐 *Команды администратора:*\n"
+        text += "  /listfaq - Показать все FAQ\n"
+        text += "  /addfaq ключи | ответ - Добавить FAQ\n"
+        text += "  /delfaq ID - Удалить FAQ\n"
+        text += "  /reply ID Текст - Ответить пользователю\n"
+        text += "  /stats - Показать статистику\n\n"
+        
+        text += "📝 *Примеры:*\n"
+        text += "  `/addfaq цена,стоимость | 1000 рублей`\n"
+        text += "  `/reply 123456789 Привет!`\n"
+        text += "  `/delfaq 5`\n"
+    else:
+        text += "🔐 *Для администраторов:*\n"
+        text += "  Доступны дополнительные команды.\n"
+        text += "  Свяжитесь с поддержкой для получения прав.\n"
+    
+    if update.callback_query:
+        query = update.callback_query
+        query.answer()
+        query.edit_message_text(text, parse_mode='Markdown')
+    else:
+        update.message.reply_text(text, parse_mode='Markdown')
 
 def faq_list(update: Update, context):
     query = update.callback_query
@@ -87,7 +122,6 @@ def operator_request(update: Update, context):
     context.user_data['waiting_for_operator'] = True
 
 def send_to_admin(context, user, question):
-    """Отправляет вопрос админу"""
     try:
         message_text = (
             f"❓ *Новый вопрос*\n\n"
@@ -95,7 +129,9 @@ def send_to_admin(context, user, question):
             f"🆔 ID: `{user.id}`\n"
             f"📝 Вопрос:\n{question}\n\n"
             f"💡 Чтобы ответить:\n"
-            f"`/reply {user.id} Ваш ответ`"
+            f"`/reply {user.id} Ваш ответ`\n\n"
+            f"✏️ Чтобы добавить в базу знаний:\n"
+            f"`/addfaq ключи | ответ`"
         )
         
         context.bot.send_message(
@@ -119,9 +155,15 @@ def handle_message(update: Update, context):
     if context.user_data.get('waiting_for_operator'):
         sent = send_to_admin(context, user, question)
         if sent:
-            update.message.reply_text("✅ Ваш вопрос передан оператору!")
+            update.message.reply_text(
+                "✅ Ваш вопрос передан оператору!\n\n"
+                "Спасибо за обращение. Наш специалист свяжется с вами в ближайшее время. ⏳"
+            )
         else:
-            update.message.reply_text("⚠️ Не удалось передать вопрос.")
+            update.message.reply_text(
+                "⚠️ Не удалось передать вопрос оператору.\n\n"
+                "Пожалуйста, попробуйте позже или свяжитесь с нами другим способом."
+            )
         context.user_data['waiting_for_operator'] = False
         return
     
@@ -133,18 +175,18 @@ def handle_message(update: Update, context):
         if sent:
             update.message.reply_text(
                 "🤔 Я не знаю ответа на этот вопрос.\n\n"
-                "Но я уже передал его оператору!"
+                "✅ Но я уже передал ваш вопрос оператору!\n"
+                "⏳ Ожидайте ответа в ближайшее время.\n\n"
+                "Спасибо за терпение! 😊"
             )
         else:
             update.message.reply_text(
-                "🤔 Я не знаю ответа.\n\n"
-                "Не удалось связаться с оператором. Попробуйте позже."
+                "🤔 Я не знаю ответа на этот вопрос.\n\n"
+                "⚠️ К сожалению, не удалось связаться с оператором.\n"
+                "Пожалуйста, попробуйте позже или напишите нам другим способом."
             )
 
-# === КОМАНДЫ АДМИНИСТРАТОРА ===
-
 def admin_reply(update: Update, context):
-    """/reply ID_пользователя Текст ответа"""
     if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
@@ -152,7 +194,11 @@ def admin_reply(update: Update, context):
     try:
         parts = update.message.text.split(' ', 2)
         if len(parts) < 3:
-            update.message.reply_text("❌ Используйте: /reply ID_пользователя Текст")
+            update.message.reply_text(
+                "❌ Используйте: /reply ID_пользователя Текст\n\n"
+                "Пример: `/reply 123456789 Привет!`",
+                parse_mode='Markdown'
+            )
             return
         
         user_id = int(parts[1])
@@ -160,7 +206,8 @@ def admin_reply(update: Update, context):
         
         context.bot.send_message(
             chat_id=user_id,
-            text=f"📨 *Ответ поддержки:*\n\n{reply_text}"
+            text=f"📨 *Ответ поддержки:*\n\n{reply_text}\n\n"
+                 f"✉️ Если у вас остались вопросы, просто напишите ещё раз."
         )
         update.message.reply_text(f"✅ Ответ отправлен пользователю {user_id}!")
         
@@ -171,7 +218,6 @@ def admin_reply(update: Update, context):
         update.message.reply_text(f"❌ Ошибка: {e}")
 
 def list_faq(update: Update, context):
-    """/listfaq - показать все FAQ"""
     if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
@@ -193,7 +239,6 @@ def list_faq(update: Update, context):
     update.message.reply_text(text, parse_mode='Markdown')
 
 def add_faq(update: Update, context):
-    """/addfaq ключевые_слова | ответ"""
     if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
@@ -244,7 +289,6 @@ def add_faq(update: Update, context):
         update.message.reply_text(f"❌ Ошибка: {e}")
 
 def delete_faq(update: Update, context):
-    """/delfaq ID"""
     if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
@@ -268,8 +312,24 @@ def delete_faq(update: Update, context):
         logger.error(f"Ошибка удаления FAQ: {e}")
         update.message.reply_text(f"❌ Ошибка: {e}")
 
+def stats_command(update: Update, context):
+    """Команда /stats - показывает статистику"""
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    faq_list = load_faq()
+    total_faq = len(faq_list)
+    
+    text = f"📊 *Статистика бота*\n\n"
+    text += f"📝 Всего FAQ: {total_faq}\n"
+    text += f"👤 Админ ID: {ADMIN_CHAT_ID}\n"
+    text += f"⏰ Бот активен и работает\n"
+    text += f"🔄 Статус: ✅ Онлайн"
+    
+    update.message.reply_text(text, parse_mode='Markdown')
+
 def error_handler(update, context):
-    """Обработчик ошибок"""
     logger.error(f'Update "{update}" вызвал ошибку "{context.error}"')
 
 def main():
@@ -278,27 +338,34 @@ def main():
     
     # Команды для всех
     dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("help", help_command))
     
-    # Команды для админа (работают в личном чате)
+    # Команды для админа
     dp.add_handler(CommandHandler("reply", admin_reply))
-    dp.add_handler(CommandHandler("listfaq", list_faq))  # ← ДОБАВЛЕНА КОМАНДА
+    dp.add_handler(CommandHandler("listfaq", list_faq))
     dp.add_handler(CommandHandler("addfaq", add_faq))
-    dp.add_handler(CommandHandler("delfaq", delete_faq))  # ← ДОБАВЛЕНА КОМАНДА
+    dp.add_handler(CommandHandler("delfaq", delete_faq))
+    dp.add_handler(CommandHandler("stats", stats_command))
     
-    # Обработчики
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+    # Обработчики кнопок
     dp.add_handler(CallbackQueryHandler(faq_list, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
+    dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
+    
+    # Обработчик сообщений
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
     
     dp.add_error_handler(error_handler)
     
     logger.info("🤖 Бот поддержки запущен!")
     logger.info(f"📌 Админ ID: {ADMIN_CHAT_ID}")
     logger.info("📌 Команды администратора:")
+    logger.info("  /help - список команд")
     logger.info("  /reply ID Текст - ответить пользователю")
     logger.info("  /listfaq - список FAQ")
     logger.info("  /addfaq ключи | ответ - добавить FAQ")
     logger.info("  /delfaq ID - удалить FAQ")
+    logger.info("  /stats - статистика")
     
     updater.start_polling()
     updater.idle()
