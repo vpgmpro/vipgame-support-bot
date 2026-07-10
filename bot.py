@@ -1,4 +1,4 @@
-# bot.py - с полными уведомлениями в группу
+# bot.py - полная версия со всеми командами
 
 import logging
 import json
@@ -22,6 +22,15 @@ def load_faq():
         logger.error(f"Ошибка загрузки FAQ: {e}")
         return []
 
+def save_faq(faq_list):
+    try:
+        with open(FAQ_FILE, 'w', encoding='utf-8') as f:
+            json.dump({'faq': faq_list}, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка сохранения FAQ: {e}")
+        return False
+
 def find_answer(question):
     faq_list = load_faq()
     question_lower = question.lower()
@@ -36,6 +45,10 @@ def find_answer(question):
             best_match = faq.get('answer')
     
     return best_match if max_matches > 0 else None
+
+def is_admin(user_id):
+    """Проверяет, является ли пользователь админом"""
+    return user_id == ADMIN_CHAT_ID
 
 def start(update: Update, context):
     user = update.effective_user
@@ -74,18 +87,15 @@ def operator_request(update: Update, context):
     context.user_data['waiting_for_operator'] = True
 
 def send_to_admin(context, user, question):
-    """Отправляет вопрос админу с полным форматированием"""
+    """Отправляет вопрос админу"""
     try:
-        # Формируем красивое сообщение как раньше
         message_text = (
-            f"❓ *НЕИЗВЕСТНЫЙ ВОПРОС*\n\n"
+            f"❓ *Новый вопрос*\n\n"
             f"👤 Пользователь: @{user.username or user.first_name}\n"
             f"🆔 ID: `{user.id}`\n"
             f"📝 Вопрос:\n{question}\n\n"
-            f"💡 Чтобы ответить, напишите:\n"
-            f"`/reply {user.id} Ваш ответ`\n\n"
-            f"✏️ Чтобы добавить в базу знаний:\n"
-            f"`/addfaq ключевые_слова | ответ`"
+            f"💡 Чтобы ответить:\n"
+            f"`/reply {user.id} Ваш ответ`"
         )
         
         context.bot.send_message(
@@ -106,44 +116,36 @@ def handle_message(update: Update, context):
     if question.startswith('/'):
         return
     
-    # Если пользователь ждет оператора
     if context.user_data.get('waiting_for_operator'):
         sent = send_to_admin(context, user, question)
         if sent:
             update.message.reply_text("✅ Ваш вопрос передан оператору!")
         else:
-            update.message.reply_text(
-                "⚠️ Не удалось передать вопрос оператору. "
-                "Пожалуйста, попробуйте позже."
-            )
+            update.message.reply_text("⚠️ Не удалось передать вопрос.")
         context.user_data['waiting_for_operator'] = False
         return
     
-    # Ищем ответ в FAQ
     answer = find_answer(question)
-    
     if answer:
         update.message.reply_text(answer)
     else:
-        # Отправляем админу с полным форматированием
         sent = send_to_admin(context, user, question)
-        
         if sent:
             update.message.reply_text(
                 "🤔 Я не знаю ответа на этот вопрос.\n\n"
-                "Но я уже передал его оператору! Он свяжется с вами в ближайшее время."
+                "Но я уже передал его оператору!"
             )
         else:
             update.message.reply_text(
-                "🤔 Я не знаю ответа на этот вопрос.\n\n"
-                "К сожалению, не удалось связаться с оператором. "
-                "Пожалуйста, попробуйте позже."
+                "🤔 Я не знаю ответа.\n\n"
+                "Не удалось связаться с оператором. Попробуйте позже."
             )
 
+# === КОМАНДЫ АДМИНИСТРАТОРА ===
+
 def admin_reply(update: Update, context):
-    """Команда для ответа пользователю: /reply ID Текст"""
-    # Проверяем, что команда из группы или от админа
-    if update.effective_user.id != ADMIN_CHAT_ID:
+    """/reply ID_пользователя Текст ответа"""
+    if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
     
@@ -156,12 +158,9 @@ def admin_reply(update: Update, context):
         user_id = int(parts[1])
         reply_text = parts[2]
         
-        # Отправляем ответ пользователю
         context.bot.send_message(
             chat_id=user_id,
-            text=f"📨 *Ответ поддержки:*\n\n{reply_text}\n\n"
-                 f"✉️ Если у вас остались вопросы, просто напишите ещё раз.",
-            parse_mode='Markdown'
+            text=f"📨 *Ответ поддержки:*\n\n{reply_text}"
         )
         update.message.reply_text(f"✅ Ответ отправлен пользователю {user_id}!")
         
@@ -169,11 +168,33 @@ def admin_reply(update: Update, context):
         update.message.reply_text("❌ ID пользователя должен быть числом.")
     except Exception as e:
         logger.error(f"Ошибка при ответе: {e}")
-        update.message.reply_text(f"❌ Не удалось отправить ответ. Ошибка: {e}")
+        update.message.reply_text(f"❌ Ошибка: {e}")
+
+def list_faq(update: Update, context):
+    """/listfaq - показать все FAQ"""
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    faq_list = load_faq()
+    
+    if not faq_list:
+        update.message.reply_text("📋 База знаний пуста.")
+        return
+    
+    text = "📚 *База знаний:*\n\n"
+    for faq in faq_list:
+        faq_id = faq.get('id')
+        keywords = faq.get('keywords', [])
+        answer = faq.get('answer', '')
+        text += f"*ID {faq_id}. {', '.join(keywords)}*\n"
+        text += f"📝 {answer[:100]}{'...' if len(answer) > 100 else ''}\n\n"
+    
+    update.message.reply_text(text, parse_mode='Markdown')
 
 def add_faq(update: Update, context):
-    """Добавление FAQ: /addfaq ключевые_слова | ответ"""
-    if update.effective_user.id != ADMIN_CHAT_ID:
+    """/addfaq ключевые_слова | ответ"""
+    if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
     
@@ -181,8 +202,8 @@ def add_faq(update: Update, context):
         parts = update.message.text.split(' ', 1)
         if len(parts) < 2:
             update.message.reply_text(
-                "❌ Использование: `/addfaq ключевые_слова | ответ`\n\n"
-                "Например: `/addfaq оплата,карта | Мы принимаем карты всех банков.`",
+                "❌ Использование: `/addfaq ключи | ответ`\n"
+                "Например: `/addfaq оплата,карта | Мы принимаем карты`",
                 parse_mode='Markdown'
             )
             return
@@ -222,15 +243,30 @@ def add_faq(update: Update, context):
         logger.error(f"Ошибка добавления FAQ: {e}")
         update.message.reply_text(f"❌ Ошибка: {e}")
 
-def save_faq(faq_list):
-    """Сохраняет FAQ в JSON файл"""
+def delete_faq(update: Update, context):
+    """/delfaq ID"""
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
     try:
-        with open(FAQ_FILE, 'w', encoding='utf-8') as f:
-            json.dump({'faq': faq_list}, f, ensure_ascii=False, indent=2)
-        return True
+        parts = update.message.text.split(' ')
+        if len(parts) < 2:
+            update.message.reply_text("❌ Используйте: `/delfaq ID`", parse_mode='Markdown')
+            return
+        
+        faq_id = int(parts[1])
+        faq_list = load_faq()
+        faq_list = [item for item in faq_list if item.get('id') != faq_id]
+        save_faq(faq_list)
+        
+        update.message.reply_text(f"✅ FAQ #{faq_id} удален.")
+        
+    except ValueError:
+        update.message.reply_text("❌ ID должен быть числом.")
     except Exception as e:
-        logger.error(f"Ошибка сохранения FAQ: {e}")
-        return False
+        logger.error(f"Ошибка удаления FAQ: {e}")
+        update.message.reply_text(f"❌ Ошибка: {e}")
 
 def error_handler(update, context):
     """Обработчик ошибок"""
@@ -240,24 +276,29 @@ def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
     
-    # Команды
+    # Команды для всех
     dp.add_handler(CommandHandler("start", start))
+    
+    # Команды для админа (работают в личном чате)
     dp.add_handler(CommandHandler("reply", admin_reply))
+    dp.add_handler(CommandHandler("listfaq", list_faq))  # ← ДОБАВЛЕНА КОМАНДА
     dp.add_handler(CommandHandler("addfaq", add_faq))
+    dp.add_handler(CommandHandler("delfaq", delete_faq))  # ← ДОБАВЛЕНА КОМАНДА
     
     # Обработчики
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
     dp.add_handler(CallbackQueryHandler(faq_list, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     
-    # Обработчик ошибок
     dp.add_error_handler(error_handler)
     
     logger.info("🤖 Бот поддержки запущен!")
     logger.info(f"📌 Админ ID: {ADMIN_CHAT_ID}")
     logger.info("📌 Команды администратора:")
     logger.info("  /reply ID Текст - ответить пользователю")
-    logger.info("  /addfaq ключи | ответ - добавить в базу знаний")
+    logger.info("  /listfaq - список FAQ")
+    logger.info("  /addfaq ключи | ответ - добавить FAQ")
+    logger.info("  /delfaq ID - удалить FAQ")
     
     updater.start_polling()
     updater.idle()
