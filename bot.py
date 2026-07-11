@@ -1,4 +1,4 @@
-# bot.py - Упрощённая версия без pymorphy3
+# bot.py - Финальная версия с исправленным поиском
 
 import logging
 import json
@@ -12,13 +12,13 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryH
 from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE
 
 # === КОНСТАНТЫ ПОИСКА ===
-MIN_MATCH_RATIO = 0.5
-EXACT_MATCH_BONUS = 100
-WORD_WEIGHT = 5
-STOP_WORD_WEIGHT = 1
-LOG_SEARCH_DEBUG = True
+MIN_MATCH_RATIO = 0.3           # Снизил порог для лучшего поиска
+EXACT_MATCH_BONUS = 100         # Бонус за полное совпадение фразы
+WORD_WEIGHT = 5                 # Вес значимого слова
+STOP_WORD_WEIGHT = 1            # Вес стоп-слова
+LOG_SEARCH_DEBUG = True         # Включает логирование поиска
 
-# Стоп-слова
+# Стоп-слова (уменьшаем их вес)
 STOP_WORDS = {'что', 'как', 'где', 'когда', 'ли', 'это', 'такое', 'то', 'чем', 'для', 'без', 'по', 'с', 'в', 'на'}
 
 # === КЕШ ===
@@ -108,7 +108,7 @@ def normalize_text(text):
     return text
 
 def get_faq_with_lemmas():
-    """Загружает FAQ в кеш (без лемматизации)"""
+    """Загружает FAQ в кеш"""
     global _faq_cache
     
     if _faq_cache is not None:
@@ -133,7 +133,8 @@ def get_faq_with_lemmas():
 
 def find_answer(question):
     question = normalize_text(question)
-    question_words = set(question.split())
+    question_words = question.split()
+    question_words_set = set(question_words)
     
     if not question_words:
         return None
@@ -153,24 +154,36 @@ def find_answer(question):
         
         for keyword in cache_item.get('keywords', []):
             keyword_norm = normalize_text(keyword)
-            keyword_words = set(keyword_norm.split())
+            keyword_words = keyword_norm.split()
+            keyword_words_set = set(keyword_words)
             keyword_len = len(keyword_words)
             
             if keyword_len == 0:
                 continue
             
-            matched_words = len(question_words & keyword_words)
+            matched_words = len(question_words_set & keyword_words_set)
             match_ratio = matched_words / keyword_len
             
             if match_ratio < MIN_MATCH_RATIO:
                 continue
             
-            score = match_ratio
+            # === НОВАЯ ЛОГИКА СЧЁТА ===
+            score = 0
             
-            # Бонус за количество слов
-            score += keyword_len * 0.5
+            # 1. Основной балл — процент совпадения
+            score += match_ratio * 10
             
-            # Бонус за полное совпадение
+            # 2. Бонус за точное вхождение всей фразы
+            if keyword_norm in question:
+                score += 30
+            
+            # 3. Бонус за количество слов
+            if keyword_len >= 2:
+                score += keyword_len * 2
+            else:
+                score += 1
+            
+            # 4. Бонус за полное совпадение
             if question == keyword_norm:
                 score += EXACT_MATCH_BONUS
             
