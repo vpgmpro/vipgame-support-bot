@@ -1,4 +1,4 @@
-# bot.py - Полная версия с поддержкой фото, видео и файлов
+# bot.py - Полная версия с публикацией в канал
 
 import logging
 import json
@@ -11,7 +11,7 @@ from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 
-from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE
+from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE, CHANNEL_ID
 
 # === FLASK ДЛЯ RENDER ===
 flask_app = Flask(__name__)
@@ -281,11 +281,13 @@ def help_command(update: Update, context):
         text += "  /delfaq ID - Удалить FAQ\n"
         text += "  /listfaq - Показать все FAQ\n"
         text += "  /reply ID Текст - Ответить пользователю\n"
+        text += "  /post Текст - Опубликовать в канал\n"
         text += "  /sync - Синхронизировать с GitHub\n"
         text += "  /stats - Статистика\n\n"
         text += "📝 Примеры:\n"
         text += "  /addfaq цена,стоимость | 1000 рублей\n"
         text += "  /editfaq 5 | цена,стоимость,сколько стоит | 1500 рублей\n"
+        text += "  /post Сегодня вышло обновление!\n"
         text += "  /reply 123456789 Привет!\n"
     else:
         text += "🔐 Для администраторов доступны дополнительные команды.\n"
@@ -708,7 +710,7 @@ def handle_message(update: Update, context):
     
     # === ОБРАБОТКА ВЛОЖЕНИЙ ===
     if update.message.photo:
-        photo = update.message.photo[-1]  # Берём самое большое фото
+        photo = update.message.photo[-1]
         caption = update.message.caption or "📸 Фото без подписи"
         
         context.bot.send_photo(
@@ -740,7 +742,7 @@ def handle_message(update: Update, context):
             document=document.file_id,
             caption=f"📄 ФАЙЛ от @{user.username or user.first_name} (ID: {user.id})\n\n{caption}"
         )
-        update.message.reply_text("✅ Ваш файл отправлено оператору!")
+        update.message.reply_text("✅ Ваш файл отправлен оператору!")
         return
     
     # === ОБРАБОТКА ТЕКСТА ===
@@ -780,6 +782,74 @@ def handle_message(update: Update, context):
                 "Пожалуйста, попробуйте позже."
             )
 
+# === ПУБЛИКАЦИЯ В КАНАЛ ===
+
+def post_command(update: Update, context):
+    """/post Текст — опубликовать в канал"""
+    user = update.effective_user
+    
+    if not is_admin(user.id):
+        update.message.reply_text("⛔ У вас нет прав.")
+        return
+    
+    parts = update.message.text.split(' ', 1)
+    if len(parts) < 2:
+        update.message.reply_text("❌ Использование: /post Текст новости")
+        return
+    
+    text = parts[1]
+    
+    try:
+        context.bot.send_message(chat_id=CHANNEL_ID, text=text)
+        update.message.reply_text("✅ Опубликовано в канале!")
+    except Exception as e:
+        update.message.reply_text(f"❌ Ошибка: {e}")
+
+def publish_faq_to_channel(context):
+    """Публикует случайный FAQ в канал"""
+    faq_list = load_faq()
+    
+    if not faq_list:
+        return
+    
+    import random
+    faq = random.choice(faq_list)
+    
+    text = (
+        f"🔥 *Совет дня от VIP Game*\n\n"
+        f"❓ *{faq['keywords'][0].capitalize()}*\n\n"
+        f"{faq['answer']}\n\n"
+        f"💡 *Хотите узнать больше?*\n"
+        f"Подписывайтесь и следите за новостями! 🚀"
+    )
+    
+    try:
+        context.bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=text,
+            parse_mode='Markdown'
+        )
+        logger.info(f"✅ FAQ опубликован: {faq['id']}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка: {e}")
+
+def schedule_faq_publisher(dispatcher):
+    """Запускает расписание публикации FAQ"""
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from apscheduler.triggers.cron import CronTrigger
+    
+    scheduler = BackgroundScheduler()
+    
+    # Каждый день в 12:00
+    scheduler.add_job(
+        publish_faq_to_channel,
+        CronTrigger(hour=12, minute=0),
+        args=[dispatcher]
+    )
+    
+    scheduler.start()
+    logger.info("⏰ Планировщик запущен! Публикация каждый день в 12:00")
+
 def error_handler(update, context):
     logger.error(f'Update "{update}" вызвал ошибку "{context.error}"')
 
@@ -797,6 +867,7 @@ def main():
     dp.add_handler(CommandHandler("listfaq", list_faq))
     dp.add_handler(CommandHandler("stats", stats_command))
     dp.add_handler(CommandHandler("sync", sync_command))
+    dp.add_handler(CommandHandler("post", post_command))
     
     # Обработчики кнопок
     dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
@@ -804,7 +875,7 @@ def main():
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
     dp.add_handler(CallbackQueryHandler(button_callback))
     
-    # Обработчик сообщений от админа (для ответа на кнопки)
+    # Обработчик сообщений от админа
     dp.add_handler(MessageHandler(
         Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
         handle_admin_message
@@ -820,6 +891,9 @@ def main():
     
     get_faq_with_lemmas()
     
+    # Запускаем планировщик
+    schedule_faq_publisher(dp)
+    
     logger.info("🤖 Бот поддержки запущен!")
     logger.info(f"📌 Админ ID: {ADMIN_CHAT_ID}")
     logger.info(f"🔑 GitHub токен: {'✅ настроен' if GITHUB_TOKEN else '❌ НЕ НАСТРОЕН'}")
@@ -829,12 +903,5 @@ def main():
     logger.info("  /delfaq ID - удалить")
     logger.info("  /listfaq - список FAQ")
     logger.info("  /reply ID Текст - ответить пользователю")
-    logger.info("  /sync - синхронизировать с GitHub")
-    logger.info("  /stats - статистика")
-    logger.info("📎 Бот принимает фото, видео и файлы")
-    
-    updater.start_polling()
-    updater.idle()
-
-if __name__ == "__main__":
-    main()
+    logger.info("  /post Текст - опубликовать в канал")
+    logger.info("  /sync - син
