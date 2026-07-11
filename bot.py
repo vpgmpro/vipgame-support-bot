@@ -1,4 +1,4 @@
-# bot.py - Финальная версия с оптимизированным поиском
+# bot.py - Упрощённая версия без pymorphy3
 
 import logging
 import json
@@ -6,26 +6,22 @@ import os
 import re
 import requests
 import base64
-import pymorphy3
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 
 from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE
 
 # === КОНСТАНТЫ ПОИСКА ===
-MIN_MATCH_RATIO = 0.5           # Минимальный процент совпадения для рассмотрения
-EXACT_MATCH_BONUS = 100         # Бонус за полное совпадение фразы
-WORD_WEIGHT = 5                 # Вес значимого слова
-STOP_WORD_WEIGHT = 1            # Вес стоп-слова
-LOG_SEARCH_DEBUG = True        # Включает логирование поиска (включи при тестировании)
+MIN_MATCH_RATIO = 0.5
+EXACT_MATCH_BONUS = 100
+WORD_WEIGHT = 5
+STOP_WORD_WEIGHT = 1
+LOG_SEARCH_DEBUG = True
 
-# Стоп-слова (уменьшаем их вес)
+# Стоп-слова
 STOP_WORDS = {'что', 'как', 'где', 'когда', 'ли', 'это', 'такое', 'то', 'чем', 'для', 'без', 'по', 'с', 'в', 'на'}
 
-# === ИНИЦИАЛИЗАЦИЯ ===
-morph = pymorphy3.MorphAnalyzer()
-
-# Кеш для лемматизированных ключевых слов
+# === КЕШ ===
 _faq_cache = None
 
 logging.basicConfig(
@@ -34,7 +30,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Переменные для GitHub API
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
 GITHUB_REPO = os.environ.get('GITHUB_REPO', 'vpgmpro/vipgame-support-bot')
 GITHUB_BRANCH = os.environ.get('GITHUB_BRANCH', 'main')
@@ -62,7 +57,7 @@ def save_faq_local(faq_list):
 
 def push_to_github():
     if not GITHUB_TOKEN:
-        logger.warning("GitHub токен не настроен, пропускаем push")
+        logger.warning("GitHub токен не настроен")
         return False, "❌ GitHub токен не настроен"
     
     try:
@@ -79,7 +74,7 @@ def push_to_github():
         if response.status_code == 200:
             sha = response.json()['sha']
         else:
-            return False, f"❌ Не удалось получить SHA: {response.status_code}"
+            return False, f"❌ Ошибка GitHub: {response.status_code}"
         
         data = {
             'message': 'Update faq.json from bot',
@@ -99,35 +94,21 @@ def push_to_github():
         logger.error(f"Ошибка push: {e}")
         return False, f"❌ Ошибка: {e}"
 
-# === КЕШИРОВАНИЕ FAQ ===
+# === КЕШИРОВАНИЕ ===
 
 def invalidate_faq_cache():
-    """Сбрасывает кеш FAQ"""
     global _faq_cache
     _faq_cache = None
     logger.info("🔄 Кеш FAQ сброшен")
 
 def normalize_text(text):
-    """Нормализация текста: убираем пунктуацию, приводим к нижнему регистру"""
     text = text.lower()
     text = re.sub(r'[^\w\s]', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-def lemmatize_text(text):
-    """Лемматизация текста"""
-    words = text.split()
-    lemmatized = []
-    for word in words:
-        try:
-            parsed = morph.parse(word)[0]
-            lemmatized.append(parsed.normal_form)
-        except Exception:
-            lemmatized.append(word)
-    return ' '.join(lemmatized)
-
 def get_faq_with_lemmas():
-    """Загружает FAQ и кеширует лемматизированные ключевые слова"""
+    """Загружает FAQ в кеш (без лемматизации)"""
     global _faq_cache
     
     if _faq_cache is not None:
@@ -140,39 +121,19 @@ def get_faq_with_lemmas():
         cache_item = {
             'id': faq.get('id'),
             'answer': faq.get('answer', ''),
-            'lemmatized_keywords': [],
-            'keyword_sets': [],
-            'word_weights': []
+            'keywords': faq.get('keywords', [])
         }
-        
-        for keyword in faq.get('keywords', []):
-            normalized = normalize_text(keyword)
-            lemmatized = lemmatize_text(normalized)
-            keyword_words = lemmatized.split()
-            
-            cache_item['lemmatized_keywords'].append(lemmatized)
-            cache_item['keyword_sets'].append(set(keyword_words))
-            
-            weight = sum(
-                WORD_WEIGHT if w not in STOP_WORDS else STOP_WORD_WEIGHT 
-                for w in keyword_words
-            )
-            cache_item['word_weights'].append(weight)
-        
         cache_data.append(cache_item)
     
     _faq_cache = cache_data
     logger.info(f"✅ Кеш FAQ загружен: {len(cache_data)} записей")
     return _faq_cache
 
-# === ПОИСК ОТВЕТА ===
+# === ПОИСК ===
 
 def find_answer(question):
-    """Оптимизированный поиск с кешированием и отладкой"""
-    normalized_question = normalize_text(question)
-    lemmatized_question = lemmatize_text(normalized_question)
-    question_words = lemmatized_question.split()
-    question_set = set(question_words)
+    question = normalize_text(question)
+    question_words = set(question.split())
     
     if not question_words:
         return None
@@ -190,13 +151,15 @@ def find_answer(question):
         best_keyword_for_faq = ''
         best_keyword_count_for_faq = 0
         
-        for i, keyword_set in enumerate(cache_item['keyword_sets']):
-            matched_words = len(question_set & keyword_set)
-            keyword_len = len(keyword_set)
+        for keyword in cache_item.get('keywords', []):
+            keyword_norm = normalize_text(keyword)
+            keyword_words = set(keyword_norm.split())
+            keyword_len = len(keyword_words)
             
             if keyword_len == 0:
                 continue
             
+            matched_words = len(question_words & keyword_words)
             match_ratio = matched_words / keyword_len
             
             if match_ratio < MIN_MATCH_RATIO:
@@ -204,15 +167,16 @@ def find_answer(question):
             
             score = match_ratio
             
-            weight = cache_item['word_weights'][i]
-            score += weight * 0.5
+            # Бонус за количество слов
+            score += keyword_len * 0.5
             
-            if lemmatized_question == cache_item['lemmatized_keywords'][i]:
+            # Бонус за полное совпадение
+            if question == keyword_norm:
                 score += EXACT_MATCH_BONUS
             
             if score > max_keyword_score:
                 max_keyword_score = score
-                best_keyword_for_faq = cache_item['lemmatized_keywords'][i]
+                best_keyword_for_faq = keyword_norm
                 best_keyword_count_for_faq = keyword_len
         
         if max_keyword_score > best_score or (
@@ -225,7 +189,6 @@ def find_answer(question):
             best_winner_keyword = best_keyword_for_faq
             best_faq_id = cache_item.get('id')
     
-    # Логируем результат поиска (только если включено)
     if LOG_SEARCH_DEBUG:
         if best_answer and best_score >= 1:
             logger.info(
@@ -245,12 +208,10 @@ def find_answer(question):
     
     return best_answer if best_score >= 1 else None
 
-# === ПРОВЕРКА АДМИНА ===
+# === ОСТАЛЬНЫЕ ФУНКЦИИ ===
 
 def is_admin(user_id):
     return user_id == ADMIN_CHAT_ID
-
-# === КОМАНДЫ ДЛЯ ВСЕХ ===
 
 def start(update: Update, context):
     user = update.effective_user
@@ -298,8 +259,6 @@ def help_command(update: Update, context):
         query.edit_message_text(text)
     else:
         update.message.reply_text(text)
-
-# === КОМАНДЫ АДМИНИСТРАТОРА ===
 
 def add_faq(update: Update, context):
     if not is_admin(update.effective_user.id):
@@ -563,8 +522,6 @@ def admin_reply(update: Update, context):
     except Exception as e:
         update.message.reply_text(f"❌ Ошибка: {e}")
 
-# === КНОПКИ И ОБРАТНАЯ СВЯЗЬ ===
-
 def faq_list_callback(update: Update, context):
     query = update.callback_query
     query.answer()
@@ -646,8 +603,6 @@ def button_callback(update: Update, context):
             f"Формат: `ключевые_слова | ответ`\n"
             f"Пример: `любовь,обожаю | Спасибо! 😊`"
         )
-
-# === ОБРАБОТЧИКИ СООБЩЕНИЙ ===
 
 def handle_admin_message(update: Update, context):
     user = update.effective_user
@@ -747,22 +702,15 @@ def handle_message(update: Update, context):
                 "Пожалуйста, попробуйте позже."
             )
 
-# === ОБРАБОТЧИК ОШИБОК ===
-
 def error_handler(update, context):
     logger.error(f'Update "{update}" вызвал ошибку "{context.error}"')
-
-# === ГЛАВНАЯ ФУНКЦИЯ ===
 
 def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
     
-    # Команды для всех
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help_command))
-    
-    # Команды для админа
     dp.add_handler(CommandHandler("reply", admin_reply))
     dp.add_handler(CommandHandler("addfaq", add_faq))
     dp.add_handler(CommandHandler("editfaq", edit_faq))
@@ -771,24 +719,19 @@ def main():
     dp.add_handler(CommandHandler("stats", stats_command))
     dp.add_handler(CommandHandler("sync", sync_command))
     
-    # Обработчики кнопок
     dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
     dp.add_handler(CallbackQueryHandler(button_callback))
     
-    # Обработчик сообщений от админа (для ответа на кнопки)
     dp.add_handler(MessageHandler(
         Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
         handle_admin_message
     ))
-    
-    # Обработчик сообщений от всех
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
     
     dp.add_error_handler(error_handler)
     
-    # Загружаем кеш при старте
     get_faq_with_lemmas()
     
     logger.info("🤖 Бот поддержки запущен!")
