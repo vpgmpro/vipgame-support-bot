@@ -896,12 +896,3 @@ def main():
     
     logger.info("🤖 Бот поддержки запущен!")
     logger.info(f"📌 Админ ID: {ADMIN_CHAT_ID}")
-    logger.info(f"🔑 GitHub токен: {'✅ настроен' if GITHUB_TOKEN else '❌ НЕ НАСТРОЕН'}")
-    logger.info("📌 Команды администратора:")
-    logger.info("  /addfaq ключи | ответ - добавить")
-    logger.info("  /editfaq ID | ключи | ответ - изменить")
-    logger.info("  /delfaq ID - удалить")
-    logger.info("  /listfaq - список FAQ")
-    logger.info("  /reply ID Текст - ответить пользователю")
-    logger.info("  /post Текст - опубликовать в канал")
-    logger.info("  /sync - син
