@@ -1,4 +1,4 @@
-# bot.py - Полная версия с Flask для Render
+# bot.py - Полная версия с поддержкой фото, видео и файлов
 
 import logging
 import json
@@ -256,7 +256,8 @@ def start(update: Update, context):
     
     update.message.reply_text(
         f"👋 Привет, {user.first_name}!\n\n"
-        "Я бот поддержки. Напишите свой вопрос!",
+        "Я бот поддержки. Напишите свой вопрос!\n"
+        "Вы также можете отправить фото, видео или файл.",
         reply_markup=reply_markup
     )
 
@@ -268,6 +269,10 @@ def help_command(update: Update, context):
     text += "👤 Для всех пользователей:\n"
     text += "  /start - Начать диалог\n"
     text += "  /help - Показать это сообщение\n\n"
+    text += "📎 Вы также можете отправить:\n"
+    text += "  - Фото (с подписью или без)\n"
+    text += "  - Видео (с подписью или без)\n"
+    text += "  - Файлы (документы, PDF, и т.д.)\n\n"
     
     if is_admin_user:
         text += "🔐 Команды администратора:\n"
@@ -573,7 +578,8 @@ def faq_list_callback(update: Update, context):
 def operator_request(update: Update, context):
     query = update.callback_query
     query.answer()
-    query.edit_message_text("✏️ Напишите ваш вопрос, я перешлю его оператору.")
+    query.edit_message_text("✏️ Напишите ваш вопрос, я перешлю его оператору.\n\n"
+                           "Вы также можете отправить фото, видео или файл.")
     context.user_data['waiting_for_operator'] = True
 
 def send_to_admin(context, user, question):
@@ -699,8 +705,46 @@ def handle_admin_message(update: Update, context):
 
 def handle_message(update: Update, context):
     user = update.effective_user
-    question = update.message.text
     
+    # === ОБРАБОТКА ВЛОЖЕНИЙ ===
+    if update.message.photo:
+        photo = update.message.photo[-1]  # Берём самое большое фото
+        caption = update.message.caption or "📸 Фото без подписи"
+        
+        context.bot.send_photo(
+            chat_id=ADMIN_CHAT_ID,
+            photo=photo.file_id,
+            caption=f"📸 ФОТО от @{user.username or user.first_name} (ID: {user.id})\n\n{caption}"
+        )
+        update.message.reply_text("✅ Ваше фото отправлено оператору!")
+        return
+    
+    elif update.message.video:
+        video = update.message.video
+        caption = update.message.caption or "🎬 Видео без подписи"
+        
+        context.bot.send_video(
+            chat_id=ADMIN_CHAT_ID,
+            video=video.file_id,
+            caption=f"🎬 ВИДЕО от @{user.username or user.first_name} (ID: {user.id})\n\n{caption}"
+        )
+        update.message.reply_text("✅ Ваше видео отправлено оператору!")
+        return
+    
+    elif update.message.document:
+        document = update.message.document
+        caption = update.message.caption or f"📄 Файл: {document.file_name}"
+        
+        context.bot.send_document(
+            chat_id=ADMIN_CHAT_ID,
+            document=document.file_id,
+            caption=f"📄 ФАЙЛ от @{user.username or user.first_name} (ID: {user.id})\n\n{caption}"
+        )
+        update.message.reply_text("✅ Ваш файл отправлено оператору!")
+        return
+    
+    # === ОБРАБОТКА ТЕКСТА ===
+    question = update.message.text
     logger.info(f"📩 ПОЛУЧЕН ЗАПРОС: '{question}' от {user.id}")
     
     if question.startswith('/'):
@@ -743,6 +787,7 @@ def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
     
+    # Команды
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help_command))
     dp.add_handler(CommandHandler("reply", admin_reply))
@@ -753,15 +798,22 @@ def main():
     dp.add_handler(CommandHandler("stats", stats_command))
     dp.add_handler(CommandHandler("sync", sync_command))
     
+    # Обработчики кнопок
     dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
     dp.add_handler(CallbackQueryHandler(button_callback))
     
+    # Обработчик сообщений от админа (для ответа на кнопки)
     dp.add_handler(MessageHandler(
         Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
         handle_admin_message
     ))
+    
+    # Обработчики для всех типов сообщений
+    dp.add_handler(MessageHandler(Filters.photo, handle_message))
+    dp.add_handler(MessageHandler(Filters.video, handle_message))
+    dp.add_handler(MessageHandler(Filters.document, handle_message))
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
     
     dp.add_error_handler(error_handler)
@@ -779,6 +831,7 @@ def main():
     logger.info("  /reply ID Текст - ответить пользователю")
     logger.info("  /sync - синхронизировать с GitHub")
     logger.info("  /stats - статистика")
+    logger.info("📎 Бот принимает фото, видео и файлы")
     
     updater.start_polling()
     updater.idle()
