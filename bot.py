@@ -1,4 +1,4 @@
-# bot.py - Полная версия с публикацией в канал
+# bot.py - Полная рабочая версия с публикацией в канал
 
 import logging
 import json
@@ -896,3 +896,10 @@ def main():
     
     logger.info("🤖 Бот поддержки запущен!")
     logger.info(f"📌 Админ ID: {ADMIN_CHAT_ID}")
+    logger.info(f"🔑 GitHub токен: {'✅ настроен' if GITHUB_TOKEN else '❌ НЕ НАСТРОЕН'}")
+    logger.info("📌 Команды администратора:")
+    logger.info("  /addfaq ключи | ответ - добавить")
+    logger.info("  /editfaq ID | ключи | ответ - изменить")
+    logger.info("  /delfaq ID - удалить")
+    logger.info("  /listfaq - список FAQ")
+    logger.info
