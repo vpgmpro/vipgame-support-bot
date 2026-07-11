@@ -902,4 +902,14 @@ def main():
     logger.info("  /editfaq ID | ключи | ответ - изменить")
     logger.info("  /delfaq ID - удалить")
     logger.info("  /listfaq - список FAQ")
-    logger.info
+    logger.info("  /reply ID Текст - ответить пользователю")
+    logger.info("  /post Текст - опубликовать в канал")
+    logger.info("  /sync - синхронизировать с GitHub")
+    logger.info("  /stats - статистика")
+    logger.info("📎 Бот принимает фото, видео и файлы")
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == "__main__":
+    main()
