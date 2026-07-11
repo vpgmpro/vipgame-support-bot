@@ -1,4 +1,4 @@
-# bot.py - Финальная версия с исправленным поиском
+# bot.py - Финальная версия с расширенным логированием
 
 import logging
 import json
@@ -132,11 +132,15 @@ def get_faq_with_lemmas():
 # === ПОИСК ===
 
 def find_answer(question):
+    # Лог для проверки вызова функции
+    logger.info(f"🔎 find_answer вызвана с вопросом: '{question}'")
+    
     question = normalize_text(question)
     question_words = question.split()
     question_words_set = set(question_words)
     
     if not question_words:
+        logger.info("❌ Вопрос пуст после нормализации")
         return None
     
     faq_list = get_faq_with_lemmas()
@@ -681,6 +685,9 @@ def handle_admin_message(update: Update, context):
 def handle_message(update: Update, context):
     user = update.effective_user
     question = update.message.text
+    
+    # Лог для проверки получения сообщения
+    logger.info(f"📩 ПОЛУЧЕН ЗАПРОС: '{question}' от {user.id}")
     
     if question.startswith('/'):
         return
