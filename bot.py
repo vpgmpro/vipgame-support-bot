@@ -1,4 +1,4 @@
-# bot.py - Полная рабочая версия с публикацией в канал
+# bot.py - Полная версия без автоматической публикации (только /post)
 
 import logging
 import json
@@ -28,17 +28,13 @@ def run_flask():
 threading.Thread(target=run_flask, daemon=True).start()
 # === КОНЕЦ БЛОКА FLASK ===
 
-# === КОНСТАНТЫ ПОИСКА ===
+# === КОНСТАНТЫ ===
 MIN_MATCH_RATIO = 0.3
 EXACT_MATCH_BONUS = 100
-WORD_WEIGHT = 5
-STOP_WORD_WEIGHT = 1
 LOG_SEARCH_DEBUG = True
 
-# Стоп-слова
 STOP_WORDS = {'что', 'как', 'где', 'когда', 'ли', 'это', 'такое', 'то', 'чем', 'для', 'без', 'по', 'с', 'в', 'на'}
 
-# === КЕШ ===
 _faq_cache = None
 
 logging.basicConfig(
@@ -74,7 +70,6 @@ def save_faq_local(faq_list):
 
 def push_to_github():
     if not GITHUB_TOKEN:
-        logger.warning("GitHub токен не настроен")
         return False, "❌ GitHub токен не настроен"
     
     try:
@@ -125,7 +120,6 @@ def normalize_text(text):
     return text
 
 def get_faq_with_lemmas():
-    """Загружает FAQ в кеш"""
     global _faq_cache
     
     if _faq_cache is not None:
@@ -156,7 +150,6 @@ def find_answer(question):
     question_words_set = set(question_words)
     
     if not question_words:
-        logger.info("❌ Вопрос пуст после нормализации")
         return None
     
     faq_list = get_faq_with_lemmas()
@@ -187,22 +180,16 @@ def find_answer(question):
             if match_ratio < MIN_MATCH_RATIO:
                 continue
             
-            score = 0
+            score = match_ratio * 10
             
-            # 1. Основной балл — процент совпадения
-            score += match_ratio * 10
-            
-            # 2. Бонус за точное вхождение всей фразы
             if keyword_norm in question:
                 score += 30
             
-            # 3. Бонус за количество слов
             if keyword_len >= 2:
                 score += keyword_len * 2
             else:
                 score += 1
             
-            # 4. Бонус за полное совпадение
             if question == keyword_norm:
                 score += EXACT_MATCH_BONUS
             
@@ -708,7 +695,6 @@ def handle_admin_message(update: Update, context):
 def handle_message(update: Update, context):
     user = update.effective_user
     
-    # === ОБРАБОТКА ВЛОЖЕНИЙ ===
     if update.message.photo:
         photo = update.message.photo[-1]
         caption = update.message.caption or "📸 Фото без подписи"
@@ -745,7 +731,6 @@ def handle_message(update: Update, context):
         update.message.reply_text("✅ Ваш файл отправлен оператору!")
         return
     
-    # === ОБРАБОТКА ТЕКСТА ===
     question = update.message.text
     logger.info(f"📩 ПОЛУЧЕН ЗАПРОС: '{question}' от {user.id}")
     
@@ -785,7 +770,6 @@ def handle_message(update: Update, context):
 # === ПУБЛИКАЦИЯ В КАНАЛ ===
 
 def post_command(update: Update, context):
-    """/post Текст — опубликовать в канал"""
     user = update.effective_user
     
     if not is_admin(user.id):
@@ -805,51 +789,6 @@ def post_command(update: Update, context):
     except Exception as e:
         update.message.reply_text(f"❌ Ошибка: {e}")
 
-def publish_faq_to_channel(context):
-    """Публикует случайный FAQ в канал"""
-    faq_list = load_faq()
-    
-    if not faq_list:
-        return
-    
-    import random
-    faq = random.choice(faq_list)
-    
-    text = (
-        f"🔥 *Совет дня от VIP Game*\n\n"
-        f"❓ *{faq['keywords'][0].capitalize()}*\n\n"
-        f"{faq['answer']}\n\n"
-        f"💡 *Хотите узнать больше?*\n"
-        f"Подписывайтесь и следите за новостями! 🚀"
-    )
-    
-    try:
-        context.bot.send_message(
-            chat_id=CHANNEL_ID,
-            text=text,
-            parse_mode='Markdown'
-        )
-        logger.info(f"✅ FAQ опубликован: {faq['id']}")
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
-
-def schedule_faq_publisher(dispatcher):
-    """Запускает расписание публикации FAQ"""
-    from apscheduler.schedulers.background import BackgroundScheduler
-    from apscheduler.triggers.cron import CronTrigger
-    
-    scheduler = BackgroundScheduler()
-    
-    # Каждый день в 12:00
-    scheduler.add_job(
-        publish_faq_to_channel,
-        CronTrigger(hour=12, minute=0),
-        args=[dispatcher]
-    )
-    
-    scheduler.start()
-    logger.info("⏰ Планировщик запущен! Публикация каждый день в 12:00")
-
 def error_handler(update, context):
     logger.error(f'Update "{update}" вызвал ошибку "{context.error}"')
 
@@ -857,7 +796,6 @@ def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
     
-    # Команды
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help_command))
     dp.add_handler(CommandHandler("reply", admin_reply))
@@ -869,19 +807,16 @@ def main():
     dp.add_handler(CommandHandler("sync", sync_command))
     dp.add_handler(CommandHandler("post", post_command))
     
-    # Обработчики кнопок
     dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
     dp.add_handler(CallbackQueryHandler(button_callback))
     
-    # Обработчик сообщений от админа
     dp.add_handler(MessageHandler(
         Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
         handle_admin_message
     ))
     
-    # Обработчики для всех типов сообщений
     dp.add_handler(MessageHandler(Filters.photo, handle_message))
     dp.add_handler(MessageHandler(Filters.video, handle_message))
     dp.add_handler(MessageHandler(Filters.document, handle_message))
@@ -890,9 +825,6 @@ def main():
     dp.add_error_handler(error_handler)
     
     get_faq_with_lemmas()
-    
-    # Запускаем планировщик
-    schedule_faq_publisher(dp)
     
     logger.info("🤖 Бот поддержки запущен!")
     logger.info(f"📌 Админ ID: {ADMIN_CHAT_ID}")
@@ -907,7 +839,7 @@ def main():
     logger.info("  /sync - синхронизировать с GitHub")
     logger.info("  /stats - статистика")
     logger.info("📎 Бот принимает фото, видео и файлы")
-
+    
     updater.start_polling()
     updater.idle()
 
