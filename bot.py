@@ -1,4 +1,4 @@
-# bot.py - Полная версия без автоматической публикации (только /post)
+# bot.py - Исправленная версия
 
 import logging
 import json
@@ -7,11 +7,17 @@ import re
 import requests
 import base64
 import threading
+from datetime import datetime
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 
 from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE, CHANNEL_ID
+from database import init_db, save_user, save_question, save_answer, get_stats, get_unanswered_questions, get_last_questions, get_total_users
+
+# === ВЕРСИЯ БОТА ===
+BOT_VERSION = "2.0"
+BOT_BUILD_DATE = "12.07.2026"
 
 # === FLASK ДЛЯ RENDER ===
 flask_app = Flask(__name__)
@@ -24,7 +30,6 @@ def run_flask():
     port = int(os.environ.get('PORT', 10000))
     flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
-# Запускаем Flask в отдельном потоке
 threading.Thread(target=run_flask, daemon=True).start()
 # === КОНЕЦ БЛОКА FLASK ===
 
@@ -47,6 +52,9 @@ GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
 GITHUB_REPO = os.environ.get('GITHUB_REPO', 'vpgmpro/vipgame-support-bot')
 GITHUB_BRANCH = os.environ.get('GITHUB_BRANCH', 'main')
 GITHUB_FILE_PATH = os.environ.get('GITHUB_FILE_PATH', 'faq.json')
+
+# === ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ ===
+init_db()
 
 # === РАБОТА С ФАЙЛАМИ ===
 
@@ -234,6 +242,8 @@ def is_admin(user_id):
 
 def start(update: Update, context):
     user = update.effective_user
+    save_user(user)
+    
     keyboard = [
         [InlineKeyboardButton("📋 Частые вопросы", callback_data="faq")],
         [InlineKeyboardButton("📞 Связаться с оператором", callback_data="operator")],
@@ -252,39 +262,47 @@ def help_command(update: Update, context):
     user_id = update.effective_user.id
     is_admin_user = is_admin(user_id)
     
-    text = "📚 Доступные команды:\n\n"
-    text += "👤 Для всех пользователей:\n"
-    text += "  /start - Начать диалог\n"
-    text += "  /help - Показать это сообщение\n\n"
-    text += "📎 Вы также можете отправить:\n"
-    text += "  - Фото (с подписью или без)\n"
-    text += "  - Видео (с подписью или без)\n"
-    text += "  - Файлы (документы, PDF, и т.д.)\n\n"
+    text = "🤖 *VIP Game | Support Bot*\n\n"
+    text += "👤 *Команды для пользователей*\n"
+    text += "/start — Начать диалог\n"
+    text += "/help — Справка\n\n"
+    text += "📎 *Вы также можете отправить:*\n"
+    text += "• текстовое сообщение\n"
+    text += "• фотографию\n"
+    text += "• видео\n"
+    text += "• документ (PDF, Word, Excel и др.)\n\n"
     
     if is_admin_user:
-        text += "🔐 Команды администратора:\n"
-        text += "  /addfaq ключи | ответ - Добавить FAQ\n"
-        text += "  /editfaq ID | ключи | ответ - Изменить FAQ\n"
-        text += "  /delfaq ID - Удалить FAQ\n"
-        text += "  /listfaq - Показать все FAQ\n"
-        text += "  /reply ID Текст - Ответить пользователю\n"
-        text += "  /post Текст - Опубликовать в канал\n"
-        text += "  /sync - Синхронизировать с GitHub\n"
-        text += "  /stats - Статистика\n\n"
-        text += "📝 Примеры:\n"
-        text += "  /addfaq цена,стоимость | 1000 рублей\n"
-        text += "  /editfaq 5 | цена,стоимость,сколько стоит | 1500 рублей\n"
-        text += "  /post Сегодня вышло обновление!\n"
-        text += "  /reply 123456789 Привет!\n"
-    else:
-        text += "🔐 Для администраторов доступны дополнительные команды.\n"
+        text += "🔐 *Команды администратора*\n"
+        text += "/addfaq ключи | ответ — Добавить FAQ\n"
+        text += "/editfaq ID | ключи | ответ — Изменить FAQ\n"
+        text += "/delfaq ID — Удалить FAQ\n"
+        text += "/listfaq — Показать список всех FAQ\n"
+        text += "/findfaq слово — Найти в FAQ\n"
+        text += "/faqcount — Количество FAQ\n"
+        text += "/reply — Ответить пользователю\n"
+        text += "/post — Опубликовать в канал\n"
+        text += "/stats — Статистика\n"
+        text += "/reload — Перезагрузить FAQ\n"
+        text += "/unanswered — Вопросы без ответа\n"
+        text += "/last — Последние вопросы\n"
+        text += "/users — Количество пользователей\n"
+        text += "/sync — Синхронизировать с GitHub\n"
+        text += "/ping — Проверка работы бота\n"
+        text += "/version — Версия бота\n\n"
+        text += "📝 *Примеры*\n"
+        text += "/addfaq цена,стоимость | 1000 рублей\n"
+        text += "/editfaq 5 | цена,стоимость,сколько стоит | 1500 рублей\n"
+        text += "/findfaq кристаллы\n"
+        text += "/reply 123456789 Привет!\n"
+        text += "/post Сегодня вышло обновление!\n"
     
     if update.callback_query:
         query = update.callback_query
         query.answer()
-        query.edit_message_text(text)
+        query.edit_message_text(text, parse_mode='Markdown')
     else:
-        update.message.reply_text(text)
+        update.message.reply_text(text, parse_mode='Markdown')
 
 def add_faq(update: Update, context):
     if not is_admin(update.effective_user.id):
@@ -327,10 +345,9 @@ def add_faq(update: Update, context):
         
         if success:
             update.message.reply_text(
-                f"✅ FAQ добавлен! (ID: {new_id})\n"
-                f"📌 Ключевые слова: {', '.join(keywords)}\n"
-                f"📝 Ответ: {answer}\n\n"
-                f"🔗 {message}"
+                f"✅ FAQ #{new_id} добавлен\n"
+                f"📌 Ключей: {len(keywords)}\n"
+                f"🔄 GitHub: {message}"
             )
         else:
             update.message.reply_text(
@@ -402,10 +419,9 @@ def edit_faq(update: Update, context):
         
         if success:
             update.message.reply_text(
-                f"✅ FAQ #{faq_id} обновлен!\n"
-                f"📌 Новые ключевые слова: {', '.join(keywords)}\n"
-                f"📝 Новый ответ: {new_answer}\n\n"
-                f"🔗 {message}"
+                f"✅ FAQ #{faq_id} обновлен\n"
+                f"📌 Ключей: {len(keywords)}\n"
+                f"🔄 GitHub: {message}"
             )
         else:
             update.message.reply_text(
@@ -438,7 +454,7 @@ def delete_faq(update: Update, context):
         success, message = push_to_github()
         
         if success:
-            update.message.reply_text(f"✅ FAQ #{faq_id} удален!\n🔗 {message}")
+            update.message.reply_text(f"✅ FAQ #{faq_id} удален\n🔄 GitHub: {message}")
         else:
             update.message.reply_text(
                 f"⚠️ FAQ #{faq_id} удален локально, но не загружен на GitHub.\n"
@@ -461,15 +477,73 @@ def list_faq(update: Update, context):
         update.message.reply_text("📋 База знаний пуста.")
         return
     
-    text = "📚 База знаний:\n\n"
+    text = "📚 *База знаний:*\n\n"
     for faq in faq_list:
         faq_id = faq.get('id')
         keywords = faq.get('keywords', [])
         answer = faq.get('answer', '')
-        text += f"ID {faq_id}. {', '.join(keywords)}\n"
+        text += f"*ID {faq_id}*. {', '.join(keywords)}\n"
         text += f"📝 {answer[:100]}{'...' if len(answer) > 100 else ''}\n\n"
     
-    update.message.reply_text(text)
+    update.message.reply_text(text, parse_mode='Markdown')
+
+def findfaq_command(update: Update, context):
+    user = update.effective_user
+    
+    if not is_admin(user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    parts = update.message.text.split(' ', 1)
+    if len(parts) < 2:
+        update.message.reply_text("❌ Использование: /findfaq слово")
+        return
+    
+    search_word = parts[1].lower().strip()
+    faq_list = load_faq()
+    
+    results = []
+    for faq in faq_list:
+        keywords_str = ' '.join(faq.get('keywords', [])).lower()
+        answer = faq.get('answer', '').lower()
+        
+        if search_word in keywords_str or search_word in answer:
+            results.append(faq)
+    
+    if not results:
+        update.message.reply_text(f"❌ По запросу '{search_word}' ничего не найдено.")
+        return
+    
+    text = f"🔍 *Результаты поиска по '{search_word}':*\n\n"
+    for faq in results[:5]:
+        text += f"*ID {faq.get('id')}*: {', '.join(faq.get('keywords', []))}\n"
+        text += f"📝 {faq.get('answer', '')}\n\n"
+    
+    if len(results) > 5:
+        text += f"... и ещё {len(results) - 5} результатов. Используйте /listfaq для просмотра всех."
+    
+    update.message.reply_text(text, parse_mode='Markdown')
+
+def faqcount_command(update: Update, context):
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    faq_list = load_faq()
+    update.message.reply_text(f"📚 Всего FAQ: {len(faq_list)}")
+
+def reload_command(update: Update, context):
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    invalidate_faq_cache()
+    faq_list = get_faq_with_lemmas()
+    
+    update.message.reply_text(
+        f"✅ FAQ перезагружены!\n"
+        f"📚 Всего записей: {len(faq_list)}"
+    )
 
 def sync_command(update: Update, context):
     if not is_admin(update.effective_user.id):
@@ -511,42 +585,95 @@ def stats_command(update: Update, context):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
     
+    stats = get_stats()
     faq_list = load_faq()
-    total_faq = len(faq_list)
     
-    text = f"📊 Статистика бота\n\n"
-    text += f"📝 Всего FAQ: {total_faq}\n"
-    text += f"👤 Админ ID: {ADMIN_CHAT_ID}\n"
+    auto_answer_percent = 0
+    if stats['total_questions'] > 0:
+        auto_answer_percent = round((stats['answered'] / stats['total_questions']) * 100, 1)
+    
+    text = f"📊 *Статистика бота*\n\n"
+    text += f"👥 Пользователей: {stats['total_users']}\n"
+    text += f"💬 Всего вопросов: {stats['total_questions']}\n"
+    text += f"🤖 FAQ ответил: {stats['answered']}\n"
+    text += f"👨‍💼 Передано оператору: {stats['unanswered']}\n"
+    text += f"📚 FAQ в базе: {len(faq_list)}\n"
+    text += f"📈 Процент автоматических ответов: {auto_answer_percent}%\n"
     text += f"🔗 GitHub: {'✅ настроен' if GITHUB_TOKEN else '❌ не настроен'}\n"
     text += f"⏰ Бот активен и работает\n"
     text += f"🔄 Статус: ✅ Онлайн"
     
-    update.message.reply_text(text)
+    update.message.reply_text(text, parse_mode='Markdown')
 
-def admin_reply(update: Update, context):
+def unanswered_command(update: Update, context):
     if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
     
-    try:
-        parts = update.message.text.split(' ', 2)
-        if len(parts) < 3:
-            update.message.reply_text("❌ Используйте: /reply ID_пользователя Текст")
-            return
-        
-        user_id = int(parts[1])
-        reply_text = parts[2]
-        
-        context.bot.send_message(
-            chat_id=user_id,
-            text=f"📨 Ответ поддержки:\n\n{reply_text}"
-        )
-        update.message.reply_text(f"✅ Ответ отправлен пользователю {user_id}!")
-        
-    except ValueError:
-        update.message.reply_text("❌ ID должен быть числом.")
-    except Exception as e:
-        update.message.reply_text(f"❌ Ошибка: {e}")
+    questions = get_unanswered_questions(20)
+    
+    if not questions:
+        update.message.reply_text("✅ Нет вопросов без ответа!")
+        return
+    
+    text = "📋 *Вопросы без ответа:*\n\n"
+    for q in questions:
+        q_id, user_id, question, username, created_at = q
+        username = f"@{username}" if username else f"ID: {user_id}"
+        text += f"#{q_id} | {username}\n📝 {question[:80]}...\n\n"
+    
+    update.message.reply_text(text, parse_mode='Markdown')
+
+def last_command(update: Update, context):
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    questions = get_last_questions(10)
+    
+    if not questions:
+        update.message.reply_text("📭 Нет вопросов.")
+        return
+    
+    text = "📋 *Последние вопросы:*\n\n"
+    for q in questions:
+        q_id, user_id, question, answered, username, created_at = q
+        username = f"@{username}" if username else f"ID: {user_id}"
+        status = "✅" if answered else "⏳"
+        text += f"{status} #{q_id} | {username}\n📝 {question[:80]}...\n\n"
+    
+    update.message.reply_text(text, parse_mode='Markdown')
+
+def users_command(update: Update, context):
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    count = get_total_users()
+    update.message.reply_text(f"👥 Всего пользователей: {count}")
+
+def ping_command(update: Update, context):
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    update.message.reply_text("🟢 Бот работает!")
+
+def version_command(update: Update, context):
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    faq_list = load_faq()
+    
+    text = f"🤖 *Support Bot*\n\n"
+    text += f"📌 Версия: {BOT_VERSION}\n"
+    text += f"📅 Сборка: {BOT_BUILD_DATE}\n"
+    text += f"📚 FAQ: {len(faq_list)}\n"
+    text += f"🔗 GitHub: {GITHUB_BRANCH}\n"
+    text += f"🔄 Статус: ✅ Онлайн"
+    
+    update.message.reply_text(text, parse_mode='Markdown')
 
 def faq_list_callback(update: Update, context):
     query = update.callback_query
@@ -557,12 +684,12 @@ def faq_list_callback(update: Update, context):
         query.edit_message_text("📋 Список вопросов пуст.")
         return
     
-    text = "📋 Частые вопросы:\n\n"
+    text = "📋 *Частые вопросы:*\n\n"
     for idx, faq in enumerate(faq_list, 1):
         keywords = faq.get('keywords', [])
         text += f"{idx}. {keywords[0].capitalize()}\n"
     
-    query.edit_message_text(text)
+    query.edit_message_text(text, parse_mode='Markdown')
 
 def operator_request(update: Update, context):
     query = update.callback_query
@@ -610,7 +737,8 @@ def button_callback(update: Update, context):
         context.user_data['reply_to_user'] = user_id
         query.edit_message_text(
             f"✏️ Напишите ответ для пользователя {user_id}:\n\n"
-            f"Просто отправьте текст — бот перешлёт его."
+            f"Просто отправьте текст — бот перешлёт его.\n"
+            f"Или отправьте фото/видео/файл с подписью: текст"
         )
     
     elif data.startswith('addfaq_'):
@@ -637,22 +765,109 @@ def handle_admin_message(update: Update, context):
     if not is_admin(user.id):
         return
     
+    # === ОБРАБОТКА POST ===
+    if context.user_data.get('waiting_post'):
+        # Публикуем в канал
+        if update.message.photo:
+            photo = update.message.photo[-1]
+            caption = update.message.caption or "📸"
+            try:
+                context.bot.send_photo(chat_id=CHANNEL_ID, photo=photo.file_id, caption=caption)
+                update.message.reply_text("✅ Фото опубликовано в канале!")
+            except Exception as e:
+                update.message.reply_text(f"❌ Ошибка: {e}")
+        
+        elif update.message.video:
+            video = update.message.video
+            caption = update.message.caption or "🎬"
+            try:
+                context.bot.send_video(chat_id=CHANNEL_ID, video=video.file_id, caption=caption)
+                update.message.reply_text("✅ Видео опубликовано в канале!")
+            except Exception as e:
+                update.message.reply_text(f"❌ Ошибка: {e}")
+        
+        elif update.message.document:
+            document = update.message.document
+            caption = update.message.caption or f"📄 {document.file_name}"
+            try:
+                context.bot.send_document(chat_id=CHANNEL_ID, document=document.file_id, caption=caption)
+                update.message.reply_text("✅ Файл опубликован в канале!")
+            except Exception as e:
+                update.message.reply_text(f"❌ Ошибка: {e}")
+        
+        elif update.message.text:
+            text = update.message.text
+            try:
+                context.bot.send_message(chat_id=CHANNEL_ID, text=text)
+                update.message.reply_text("✅ Опубликовано в канале!")
+            except Exception as e:
+                update.message.reply_text(f"❌ Ошибка: {e}")
+        
+        context.user_data['waiting_post'] = None
+        return
+    
+    # === ОБРАБОТКА ОТВЕТА ПОЛЬЗОВАТЕЛЮ ===
     if context.user_data.get('reply_to_user'):
         target_user_id = context.user_data['reply_to_user']
-        reply_text = update.message.text
         
-        try:
-            context.bot.send_message(
-                chat_id=target_user_id,
-                text=f"📨 *Ответ поддержки:*\n\n{reply_text}"
-            )
-            update.message.reply_text(f"✅ Ответ отправлен пользователю {target_user_id}!")
-        except Exception as e:
-            update.message.reply_text(f"❌ Ошибка при отправке: {e}")
+        if update.message.photo:
+            photo = update.message.photo[-1]
+            caption = update.message.caption or "📸 Фото"
+            try:
+                context.bot.send_photo(
+                    chat_id=target_user_id,
+                    photo=photo.file_id,
+                    caption=f"📨 *Ответ поддержки:*\n\n{caption}",
+                    parse_mode='Markdown'
+                )
+                update.message.reply_text(f"✅ Фото отправлено пользователю {target_user_id}!")
+            except Exception as e:
+                update.message.reply_text(f"❌ Ошибка: {e}")
+        
+        elif update.message.video:
+            video = update.message.video
+            caption = update.message.caption or "🎬 Видео"
+            try:
+                context.bot.send_video(
+                    chat_id=target_user_id,
+                    video=video.file_id,
+                    caption=f"📨 *Ответ поддержки:*\n\n{caption}",
+                    parse_mode='Markdown'
+                )
+                update.message.reply_text(f"✅ Видео отправлено пользователю {target_user_id}!")
+            except Exception as e:
+                update.message.reply_text(f"❌ Ошибка: {e}")
+        
+        elif update.message.document:
+            document = update.message.document
+            caption = update.message.caption or f"📄 {document.file_name}"
+            try:
+                context.bot.send_document(
+                    chat_id=target_user_id,
+                    document=document.file_id,
+                    caption=f"📨 *Ответ поддержки:*\n\n{caption}",
+                    parse_mode='Markdown'
+                )
+                update.message.reply_text(f"✅ Файл отправлен пользователю {target_user_id}!")
+            except Exception as e:
+                update.message.reply_text(f"❌ Ошибка: {e}")
+        
+        elif update.message.text:
+            reply_text = update.message.text
+            try:
+                context.bot.send_message(
+                    chat_id=target_user_id,
+                    text=f"📨 *Ответ поддержки:*\n\n{reply_text}",
+                    parse_mode='Markdown'
+                )
+                update.message.reply_text(f"✅ Ответ отправлен пользователю {target_user_id}!")
+            except Exception as e:
+                update.message.reply_text(f"❌ Ошибка: {e}")
         
         context.user_data['reply_to_user'] = None
         return
     
+    # === ОБРАБОТКА ДОБАВЛЕНИЯ FAQ ===
     if context.user_data.get('addfaq_user'):
         try:
             content = update.message.text
@@ -692,8 +907,28 @@ def handle_admin_message(update: Update, context):
         except Exception as e:
             update.message.reply_text(f"❌ Ошибка: {e}")
 
+def post_command(update: Update, context):
+    user = update.effective_user
+    
+    if not is_admin(user.id):
+        update.message.reply_text("⛔ У вас нет прав.")
+        return
+    
+    context.user_data['waiting_post'] = True
+    update.message.reply_text(
+        "📝 Отправьте текст, фото, видео или файл для публикации в канале.\n"
+        "📌 Можно добавить подпись к фото/видео."
+    )
+
 def handle_message(update: Update, context):
     user = update.effective_user
+    
+    # Сохраняем пользователя
+    save_user(user)
+    
+    # Если админ в режиме поста или ответа — пропускаем
+    if context.user_data.get('waiting_post') or context.user_data.get('reply_to_user') or context.user_data.get('addfaq_user'):
+        return
     
     if update.message.photo:
         photo = update.message.photo[-1]
@@ -737,11 +972,9 @@ def handle_message(update: Update, context):
     if question.startswith('/'):
         return
     
-    if context.user_data.get('reply_to_user') or context.user_data.get('addfaq_user'):
-        return
-    
     if context.user_data.get('waiting_for_operator'):
         sent = send_to_admin(context, user, question)
+        save_question(user.id, question)
         if sent:
             update.message.reply_text("✅ Ваш вопрос передан оператору!")
         else:
@@ -753,8 +986,10 @@ def handle_message(update: Update, context):
     
     if answer:
         update.message.reply_text(answer)
+        save_question(user.id, question, answer)
     else:
         sent = send_to_admin(context, user, question)
+        save_question(user.id, question)
         if sent:
             update.message.reply_text(
                 "✅ Я передал ваш вопрос оператору!\n"
@@ -767,28 +1002,6 @@ def handle_message(update: Update, context):
                 "Пожалуйста, попробуйте позже."
             )
 
-# === ПУБЛИКАЦИЯ В КАНАЛ ===
-
-def post_command(update: Update, context):
-    user = update.effective_user
-    
-    if not is_admin(user.id):
-        update.message.reply_text("⛔ У вас нет прав.")
-        return
-    
-    parts = update.message.text.split(' ', 1)
-    if len(parts) < 2:
-        update.message.reply_text("❌ Использование: /post Текст новости")
-        return
-    
-    text = parts[1]
-    
-    try:
-        context.bot.send_message(chat_id=CHANNEL_ID, text=text)
-        update.message.reply_text("✅ Опубликовано в канале!")
-    except Exception as e:
-        update.message.reply_text(f"❌ Ошибка: {e}")
-
 def error_handler(update, context):
     logger.error(f'Update "{update}" вызвал ошибку "{context.error}"')
 
@@ -796,27 +1009,38 @@ def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
     
+    # Команды
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help_command))
-    dp.add_handler(CommandHandler("reply", admin_reply))
     dp.add_handler(CommandHandler("addfaq", add_faq))
     dp.add_handler(CommandHandler("editfaq", edit_faq))
     dp.add_handler(CommandHandler("delfaq", delete_faq))
     dp.add_handler(CommandHandler("listfaq", list_faq))
+    dp.add_handler(CommandHandler("findfaq", findfaq_command))
+    dp.add_handler(CommandHandler("faqcount", faqcount_command))
     dp.add_handler(CommandHandler("stats", stats_command))
     dp.add_handler(CommandHandler("sync", sync_command))
+    dp.add_handler(CommandHandler("reload", reload_command))
     dp.add_handler(CommandHandler("post", post_command))
+    dp.add_handler(CommandHandler("unanswered", unanswered_command))
+    dp.add_handler(CommandHandler("last", last_command))
+    dp.add_handler(CommandHandler("users", users_command))
+    dp.add_handler(CommandHandler("ping", ping_command))
+    dp.add_handler(CommandHandler("version", version_command))
     
+    # Обработчики кнопок
     dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
     dp.add_handler(CallbackQueryHandler(button_callback))
     
+    # Обработчик сообщений от админа
     dp.add_handler(MessageHandler(
         Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
         handle_admin_message
     ))
     
+    # Обработчики для всех типов сообщений
     dp.add_handler(MessageHandler(Filters.photo, handle_message))
     dp.add_handler(MessageHandler(Filters.video, handle_message))
     dp.add_handler(MessageHandler(Filters.document, handle_message))
@@ -834,10 +1058,18 @@ def main():
     logger.info("  /editfaq ID | ключи | ответ - изменить")
     logger.info("  /delfaq ID - удалить")
     logger.info("  /listfaq - список FAQ")
-    logger.info("  /reply ID Текст - ответить пользователю")
-    logger.info("  /post Текст - опубликовать в канал")
-    logger.info("  /sync - синхронизировать с GitHub")
+    logger.info("  /findfaq слово - поиск в FAQ")
+    logger.info("  /faqcount - количество FAQ")
+    logger.info("  /reply - ответить пользователю")
+    logger.info("  /post - опубликовать в канал")
     logger.info("  /stats - статистика")
+    logger.info("  /reload - перезагрузить FAQ")
+    logger.info("  /unanswered - вопросы без ответа")
+    logger.info("  /last - последние вопросы")
+    logger.info("  /users - количество пользователей")
+    logger.info("  /ping - проверка работы")
+    logger.info("  /version - версия бота")
+    logger.info("  /sync - синхронизировать с GitHub")
     logger.info("📎 Бот принимает фото, видео и файлы")
     
     updater.start_polling()
