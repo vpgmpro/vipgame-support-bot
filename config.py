@@ -12,3 +12,4 @@ FAQ_FILE = "faq.json"
 
 # Настройки базы данных (опционально)
 DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///support.db')
+CHANNEL_ID = -1003765070433  # ← ВСТАВЬ СВОЙ ID (с минусом!)
