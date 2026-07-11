@@ -1,31 +1,38 @@
-# bot.py - с Mini-Web-сервером для Render
+# bot.py - Финальная версия с оптимизированным поиском
 
 import logging
 import json
 import os
+import re
 import requests
 import base64
-import threading
-from flask import Flask
+import pymorphy3
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 
 from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE
 
-# === Mini-Web-сервер для Render ===
-app_flask = Flask(__name__)
+# === КОНСТАНТЫ ПОИСКА ===
+MIN_MATCH_RATIO = 0.5           # Минимальный процент совпадения для рассмотрения
+EXACT_MATCH_BONUS = 100         # Бонус за полное совпадение фразы
+WORD_WEIGHT = 5                 # Вес значимого слова
+STOP_WORD_WEIGHT = 1            # Вес стоп-слова
+LOG_SEARCH_DEBUG = False        # Включает логирование поиска (включи при тестировании)
 
-@app_flask.route('/')
-def health_check():
-    return "✅ Бот работает!"
+# Стоп-слова (уменьшаем их вес)
+STOP_WORDS = {'что', 'как', 'где', 'когда', 'ли', 'это', 'такое', 'то', 'чем', 'для', 'без', 'по', 'с', 'в', 'на'}
 
-def run_flask():
-    port = int(os.environ.get('PORT', 10000))
-    app_flask.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+# === ИНИЦИАЛИЗАЦИЯ ===
+morph = pymorphy3.MorphAnalyzer()
 
-# Запускаем Flask в отдельном потоке (не мешает боту)
-threading.Thread(target=run_flask, daemon=True).start()
-# === Конец Mini-Web-сервера ===
+# Кеш для лемматизированных ключевых слов
+_faq_cache = None
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 # Переменные для GitHub API
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
@@ -33,11 +40,7 @@ GITHUB_REPO = os.environ.get('GITHUB_REPO', 'vpgmpro/vipgame-support-bot')
 GITHUB_BRANCH = os.environ.get('GITHUB_BRANCH', 'main')
 GITHUB_FILE_PATH = os.environ.get('GITHUB_FILE_PATH', 'faq.json')
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+# === РАБОТА С ФАЙЛАМИ ===
 
 def load_faq():
     try:
@@ -96,8 +99,158 @@ def push_to_github():
         logger.error(f"Ошибка push: {e}")
         return False, f"❌ Ошибка: {e}"
 
+# === КЕШИРОВАНИЕ FAQ ===
+
+def invalidate_faq_cache():
+    """Сбрасывает кеш FAQ"""
+    global _faq_cache
+    _faq_cache = None
+    logger.info("🔄 Кеш FAQ сброшен")
+
+def normalize_text(text):
+    """Нормализация текста: убираем пунктуацию, приводим к нижнему регистру"""
+    text = text.lower()
+    text = re.sub(r'[^\w\s]', '', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+def lemmatize_text(text):
+    """Лемматизация текста"""
+    words = text.split()
+    lemmatized = []
+    for word in words:
+        try:
+            parsed = morph.parse(word)[0]
+            lemmatized.append(parsed.normal_form)
+        except Exception:
+            lemmatized.append(word)
+    return ' '.join(lemmatized)
+
+def get_faq_with_lemmas():
+    """Загружает FAQ и кеширует лемматизированные ключевые слова"""
+    global _faq_cache
+    
+    if _faq_cache is not None:
+        return _faq_cache
+    
+    faq_list = load_faq()
+    cache_data = []
+    
+    for faq in faq_list:
+        cache_item = {
+            'id': faq.get('id'),
+            'answer': faq.get('answer', ''),
+            'lemmatized_keywords': [],
+            'keyword_sets': [],
+            'word_weights': []
+        }
+        
+        for keyword in faq.get('keywords', []):
+            normalized = normalize_text(keyword)
+            lemmatized = lemmatize_text(normalized)
+            keyword_words = lemmatized.split()
+            
+            cache_item['lemmatized_keywords'].append(lemmatized)
+            cache_item['keyword_sets'].append(set(keyword_words))
+            
+            weight = sum(
+                WORD_WEIGHT if w not in STOP_WORDS else STOP_WORD_WEIGHT 
+                for w in keyword_words
+            )
+            cache_item['word_weights'].append(weight)
+        
+        cache_data.append(cache_item)
+    
+    _faq_cache = cache_data
+    logger.info(f"✅ Кеш FAQ загружен: {len(cache_data)} записей")
+    return _faq_cache
+
+# === ПОИСК ОТВЕТА ===
+
+def find_answer(question):
+    """Оптимизированный поиск с кешированием и отладкой"""
+    normalized_question = normalize_text(question)
+    lemmatized_question = lemmatize_text(normalized_question)
+    question_words = lemmatized_question.split()
+    question_set = set(question_words)
+    
+    if not question_words:
+        return None
+    
+    faq_list = get_faq_with_lemmas()
+    
+    best_answer = None
+    best_score = -1
+    best_keyword_word_count = 0
+    best_winner_keyword = ''
+    best_faq_id = None
+    
+    for cache_item in faq_list:
+        max_keyword_score = 0
+        best_keyword_for_faq = ''
+        best_keyword_count_for_faq = 0
+        
+        for i, keyword_set in enumerate(cache_item['keyword_sets']):
+            matched_words = len(question_set & keyword_set)
+            keyword_len = len(keyword_set)
+            
+            if keyword_len == 0:
+                continue
+            
+            match_ratio = matched_words / keyword_len
+            
+            if match_ratio < MIN_MATCH_RATIO:
+                continue
+            
+            score = match_ratio
+            
+            weight = cache_item['word_weights'][i]
+            score += weight * 0.5
+            
+            if lemmatized_question == cache_item['lemmatized_keywords'][i]:
+                score += EXACT_MATCH_BONUS
+            
+            if score > max_keyword_score:
+                max_keyword_score = score
+                best_keyword_for_faq = cache_item['lemmatized_keywords'][i]
+                best_keyword_count_for_faq = keyword_len
+        
+        if max_keyword_score > best_score or (
+            max_keyword_score == best_score and 
+            best_keyword_count_for_faq > best_keyword_word_count
+        ):
+            best_score = max_keyword_score
+            best_answer = cache_item.get('answer')
+            best_keyword_word_count = best_keyword_count_for_faq
+            best_winner_keyword = best_keyword_for_faq
+            best_faq_id = cache_item.get('id')
+    
+    # Логируем результат поиска (только если включено)
+    if LOG_SEARCH_DEBUG:
+        if best_answer and best_score >= 1:
+            logger.info(
+                f"[FAQ] Вопрос: '{question}'\n"
+                f"  → Победитель FAQ ID: {best_faq_id}\n"
+                f"  → Ключевое слово: '{best_winner_keyword}'\n"
+                f"  → Счёт: {best_score:.2f}\n"
+                f"  → Ответ: {best_answer[:80]}...\n"
+                f"  → {'-' * 40}"
+            )
+        else:
+            logger.info(
+                f"[FAQ] Вопрос: '{question}'\n"
+                f"  → Совпадений не найдено (score: {best_score:.2f})\n"
+                f"  → {'-' * 40}"
+            )
+    
+    return best_answer if best_score >= 1 else None
+
+# === ПРОВЕРКА АДМИНА ===
+
 def is_admin(user_id):
     return user_id == ADMIN_CHAT_ID
+
+# === КОМАНДЫ ДЛЯ ВСЕХ ===
 
 def start(update: Update, context):
     user = update.effective_user
@@ -126,7 +279,7 @@ def help_command(update: Update, context):
     if is_admin_user:
         text += "🔐 Команды администратора:\n"
         text += "  /addfaq ключи | ответ - Добавить FAQ\n"
-        text += "  /editfaq ID | новый_ответ - Изменить FAQ\n"
+        text += "  /editfaq ID | ключи | ответ - Изменить FAQ\n"
         text += "  /delfaq ID - Удалить FAQ\n"
         text += "  /listfaq - Показать все FAQ\n"
         text += "  /reply ID Текст - Ответить пользователю\n"
@@ -134,7 +287,7 @@ def help_command(update: Update, context):
         text += "  /stats - Статистика\n\n"
         text += "📝 Примеры:\n"
         text += "  /addfaq цена,стоимость | 1000 рублей\n"
-        text += "  /editfaq 5 | Новая цена: 1500 рублей\n"
+        text += "  /editfaq 5 | цена,стоимость,сколько стоит | 1500 рублей\n"
         text += "  /reply 123456789 Привет!\n"
     else:
         text += "🔐 Для администраторов доступны дополнительные команды.\n"
@@ -145,6 +298,8 @@ def help_command(update: Update, context):
         query.edit_message_text(text)
     else:
         update.message.reply_text(text)
+
+# === КОМАНДЫ АДМИНИСТРАТОРА ===
 
 def add_faq(update: Update, context):
     if not is_admin(update.effective_user.id):
@@ -180,8 +335,9 @@ def add_faq(update: Update, context):
             'keywords': keywords,
             'answer': answer
         })
-        save_faq_local(faq_list)
         
+        save_faq_local(faq_list)
+        invalidate_faq_cache()
         success, message = push_to_github()
         
         if success:
@@ -210,28 +366,43 @@ def edit_faq(update: Update, context):
         parts = update.message.text.split(' ', 1)
         if len(parts) < 2:
             update.message.reply_text(
-                "❌ Использование: /editfaq ID | новый_ответ\n"
-                "Например: /editfaq 5 | Новая цена: 1500 рублей"
+                "❌ Использование: /editfaq ID | новые_ключи | новый_ответ\n"
+                "Например: /editfaq 5 | регистрация,аккаунт | Текст ответа"
             )
             return
         
         content = parts[1]
         if '|' not in content:
-            update.message.reply_text("❌ Используйте | для разделения ID и нового ответа.")
+            update.message.reply_text("❌ Используйте | для разделения ID, ключей и ответа.")
             return
         
-        id_str, new_answer = content.split('|', 1)
-        faq_id = int(id_str.strip())
-        new_answer = new_answer.strip()
+        parts_content = content.split('|')
+        if len(parts_content) < 3:
+            update.message.reply_text(
+                "❌ Формат: /editfaq ID | новые_ключи | новый_ответ\n"
+                "Например: /editfaq 5 | регистрация,аккаунт | Текст ответа"
+            )
+            return
         
-        if not new_answer:
-            update.message.reply_text("❌ Ответ не может быть пустым.")
+        faq_id = int(parts_content[0].strip())
+        keywords_str = parts_content[1].strip()
+        new_answer = parts_content[2].strip()
+        
+        if not keywords_str or not new_answer:
+            update.message.reply_text("❌ Ключевые слова и ответ не могут быть пустыми.")
+            return
+        
+        keywords = [k.strip().lower() for k in keywords_str.split(',') if k.strip()]
+        
+        if not keywords:
+            update.message.reply_text("❌ Нужно указать хотя бы одно ключевое слово.")
             return
         
         faq_list = load_faq()
         found = False
         for faq in faq_list:
             if faq.get('id') == faq_id:
+                faq['keywords'] = keywords
                 faq['answer'] = new_answer
                 found = True
                 break
@@ -241,18 +412,19 @@ def edit_faq(update: Update, context):
             return
         
         save_faq_local(faq_list)
-        
+        invalidate_faq_cache()
         success, message = push_to_github()
         
         if success:
             update.message.reply_text(
-                f"✅ Ответ для FAQ #{faq_id} обновлен!\n"
+                f"✅ FAQ #{faq_id} обновлен!\n"
+                f"📌 Новые ключевые слова: {', '.join(keywords)}\n"
                 f"📝 Новый ответ: {new_answer}\n\n"
                 f"🔗 {message}"
             )
         else:
             update.message.reply_text(
-                f"⚠️ Ответ изменен локально, но не загружен на GitHub.\n"
+                f"⚠️ FAQ обновлен локально, но не загружен на GitHub.\n"
                 f"❌ Ошибка: {message}"
             )
         
@@ -277,7 +449,7 @@ def delete_faq(update: Update, context):
         faq_list = load_faq()
         faq_list = [item for item in faq_list if item.get('id') != faq_id]
         save_faq_local(faq_list)
-        
+        invalidate_faq_cache()
         success, message = push_to_github()
         
         if success:
@@ -336,6 +508,8 @@ def sync_command(update: Update, context):
             with open(FAQ_FILE, 'w', encoding='utf-8') as f:
                 f.write(content)
             
+            invalidate_faq_cache()
+            
             faq_list = load_faq()
             update.message.reply_text(
                 f"✅ Синхронизация выполнена!\n"
@@ -388,6 +562,8 @@ def admin_reply(update: Update, context):
         update.message.reply_text("❌ ID должен быть числом.")
     except Exception as e:
         update.message.reply_text(f"❌ Ошибка: {e}")
+
+# === КНОПКИ И ОБРАТНАЯ СВЯЗЬ ===
 
 def faq_list_callback(update: Update, context):
     query = update.callback_query
@@ -471,6 +647,8 @@ def button_callback(update: Update, context):
             f"Пример: `любовь,обожаю | Спасибо! 😊`"
         )
 
+# === ОБРАБОТЧИКИ СООБЩЕНИЙ ===
+
 def handle_admin_message(update: Update, context):
     user = update.effective_user
     
@@ -519,6 +697,7 @@ def handle_admin_message(update: Update, context):
                 'answer': answer
             })
             save_faq_local(faq_list)
+            invalidate_faq_cache()
             push_to_github()
             
             update.message.reply_text(
@@ -550,20 +729,10 @@ def handle_message(update: Update, context):
         context.user_data['waiting_for_operator'] = False
         return
     
-    faq_list = load_faq()
-    question_lower = question.lower()
-    best_match = None
-    max_matches = 0
+    answer = find_answer(question)
     
-    for faq in faq_list:
-        keywords = faq.get('keywords', [])
-        matches = sum(1 for keyword in keywords if keyword in question_lower)
-        if matches > max_matches:
-            max_matches = matches
-            best_match = faq.get('answer')
-    
-    if best_match:
-        update.message.reply_text(best_match)
+    if answer:
+        update.message.reply_text(answer)
     else:
         sent = send_to_admin(context, user, question)
         if sent:
@@ -578,15 +747,22 @@ def handle_message(update: Update, context):
                 "Пожалуйста, попробуйте позже."
             )
 
+# === ОБРАБОТЧИК ОШИБОК ===
+
 def error_handler(update, context):
     logger.error(f'Update "{update}" вызвал ошибку "{context.error}"')
+
+# === ГЛАВНАЯ ФУНКЦИЯ ===
 
 def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
     
+    # Команды для всех
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help_command))
+    
+    # Команды для админа
     dp.add_handler(CommandHandler("reply", admin_reply))
     dp.add_handler(CommandHandler("addfaq", add_faq))
     dp.add_handler(CommandHandler("editfaq", edit_faq))
@@ -595,25 +771,32 @@ def main():
     dp.add_handler(CommandHandler("stats", stats_command))
     dp.add_handler(CommandHandler("sync", sync_command))
     
+    # Обработчики кнопок
     dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
     dp.add_handler(CallbackQueryHandler(button_callback))
     
+    # Обработчик сообщений от админа (для ответа на кнопки)
     dp.add_handler(MessageHandler(
         Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
         handle_admin_message
     ))
+    
+    # Обработчик сообщений от всех
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
     
     dp.add_error_handler(error_handler)
+    
+    # Загружаем кеш при старте
+    get_faq_with_lemmas()
     
     logger.info("🤖 Бот поддержки запущен!")
     logger.info(f"📌 Админ ID: {ADMIN_CHAT_ID}")
     logger.info(f"🔑 GitHub токен: {'✅ настроен' if GITHUB_TOKEN else '❌ НЕ НАСТРОЕН'}")
     logger.info("📌 Команды администратора:")
     logger.info("  /addfaq ключи | ответ - добавить")
-    logger.info("  /editfaq ID | ответ - изменить")
+    logger.info("  /editfaq ID | ключи | ответ - изменить")
     logger.info("  /delfaq ID - удалить")
     logger.info("  /listfaq - список FAQ")
     logger.info("  /reply ID Текст - ответить пользователю")
