@@ -1,4 +1,4 @@
-# bot.py - Финальная версия с расширенным логированием
+# bot.py - Полная версия с Flask для Render
 
 import logging
 import json
@@ -6,19 +6,36 @@ import os
 import re
 import requests
 import base64
+import threading
+from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 
 from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE
 
-# === КОНСТАНТЫ ПОИСКА ===
-MIN_MATCH_RATIO = 0.3           # Снизил порог для лучшего поиска
-EXACT_MATCH_BONUS = 100         # Бонус за полное совпадение фразы
-WORD_WEIGHT = 5                 # Вес значимого слова
-STOP_WORD_WEIGHT = 1            # Вес стоп-слова
-LOG_SEARCH_DEBUG = True         # Включает логирование поиска
+# === FLASK ДЛЯ RENDER ===
+flask_app = Flask(__name__)
 
-# Стоп-слова (уменьшаем их вес)
+@flask_app.route('/')
+def health_check():
+    return "✅ Бот работает!"
+
+def run_flask():
+    port = int(os.environ.get('PORT', 10000))
+    flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+# Запускаем Flask в отдельном потоке
+threading.Thread(target=run_flask, daemon=True).start()
+# === КОНЕЦ БЛОКА FLASK ===
+
+# === КОНСТАНТЫ ПОИСКА ===
+MIN_MATCH_RATIO = 0.3
+EXACT_MATCH_BONUS = 100
+WORD_WEIGHT = 5
+STOP_WORD_WEIGHT = 1
+LOG_SEARCH_DEBUG = True
+
+# Стоп-слова
 STOP_WORDS = {'что', 'как', 'где', 'когда', 'ли', 'это', 'такое', 'то', 'чем', 'для', 'без', 'по', 'с', 'в', 'на'}
 
 # === КЕШ ===
@@ -132,7 +149,6 @@ def get_faq_with_lemmas():
 # === ПОИСК ===
 
 def find_answer(question):
-    # Лог для проверки вызова функции
     logger.info(f"🔎 find_answer вызвана с вопросом: '{question}'")
     
     question = normalize_text(question)
@@ -171,7 +187,6 @@ def find_answer(question):
             if match_ratio < MIN_MATCH_RATIO:
                 continue
             
-            # === НОВАЯ ЛОГИКА СЧЁТА ===
             score = 0
             
             # 1. Основной балл — процент совпадения
@@ -686,7 +701,6 @@ def handle_message(update: Update, context):
     user = update.effective_user
     question = update.message.text
     
-    # Лог для проверки получения сообщения
     logger.info(f"📩 ПОЛУЧЕН ЗАПРОС: '{question}' от {user.id}")
     
     if question.startswith('/'):
