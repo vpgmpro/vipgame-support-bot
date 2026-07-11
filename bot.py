@@ -1,4 +1,4 @@
-# bot.py - Исправленная версия
+# bot.py - Исправленная версия с кнопкой канала
 
 import logging
 import json
@@ -247,6 +247,7 @@ def start(update: Update, context):
     keyboard = [
         [InlineKeyboardButton("📋 Частые вопросы", callback_data="faq")],
         [InlineKeyboardButton("📞 Связаться с оператором", callback_data="operator")],
+        [InlineKeyboardButton("📢 Официальный канал", url="https://t.me/vipg_channel")],
         [InlineKeyboardButton("🆘 Помощь", callback_data="help")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
