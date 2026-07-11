@@ -1,14 +1,31 @@
-# bot.py - Полная версия с кнопками (ИСПРАВЛЕННАЯ)
+# bot.py - с Mini-Web-сервером для Render
 
 import logging
 import json
 import os
 import requests
 import base64
+import threading
+from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 
 from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE
+
+# === Mini-Web-сервер для Render ===
+app_flask = Flask(__name__)
+
+@app_flask.route('/')
+def health_check():
+    return "✅ Бот работает!"
+
+def run_flask():
+    port = int(os.environ.get('PORT', 10000))
+    app_flask.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+# Запускаем Flask в отдельном потоке (не мешает боту)
+threading.Thread(target=run_flask, daemon=True).start()
+# === Конец Mini-Web-сервера ===
 
 # Переменные для GitHub API
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
@@ -396,7 +413,6 @@ def operator_request(update: Update, context):
 
 def send_to_admin(context, user, question):
     try:
-        # Создаем кнопки
         keyboard = [
             [
                 InlineKeyboardButton("📝 Ответить", callback_data=f"reply_{user.id}"),
@@ -424,7 +440,6 @@ def send_to_admin(context, user, question):
         return False
 
 def button_callback(update: Update, context):
-    """Обработка нажатий на кнопки"""
     query = update.callback_query
     query.answer()
     
@@ -442,7 +457,6 @@ def button_callback(update: Update, context):
         user_id = int(data.split('_')[1])
         context.user_data['addfaq_user'] = user_id
         
-        # Извлекаем вопрос из сообщения
         original_message = query.message.text
         try:
             question = original_message.split('📝 Вопрос:\n')[-1]
@@ -458,13 +472,11 @@ def button_callback(update: Update, context):
         )
 
 def handle_admin_message(update: Update, context):
-    """Обработка сообщений от админа в ответ на кнопки"""
     user = update.effective_user
     
     if not is_admin(user.id):
         return
     
-    # Если админ отвечает пользователю
     if context.user_data.get('reply_to_user'):
         target_user_id = context.user_data['reply_to_user']
         reply_text = update.message.text
@@ -481,7 +493,6 @@ def handle_admin_message(update: Update, context):
         context.user_data['reply_to_user'] = None
         return
     
-    # Если админ добавляет в базу знаний
     if context.user_data.get('addfaq_user'):
         try:
             content = update.message.text
@@ -500,7 +511,6 @@ def handle_admin_message(update: Update, context):
                 update.message.reply_text("❌ Ключевые слова и ответ не могут быть пустыми.")
                 return
             
-            # Добавляем в FAQ
             faq_list = load_faq()
             new_id = max([item.get('id', 0) for item in faq_list], default=0) + 1
             faq_list.append({
@@ -528,7 +538,6 @@ def handle_message(update: Update, context):
     if question.startswith('/'):
         return
     
-    # ЕСЛИ ЭТО АДМИН В РЕЖИМЕ ОТВЕТА — ПРОПУСКАЕМ
     if context.user_data.get('reply_to_user') or context.user_data.get('addfaq_user'):
         return
     
@@ -541,7 +550,6 @@ def handle_message(update: Update, context):
         context.user_data['waiting_for_operator'] = False
         return
     
-    # Ищем ответ в FAQ
     faq_list = load_faq()
     question_lower = question.lower()
     best_match = None
@@ -577,11 +585,8 @@ def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
     
-    # Команды для всех
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help_command))
-    
-    # Команды для админа
     dp.add_handler(CommandHandler("reply", admin_reply))
     dp.add_handler(CommandHandler("addfaq", add_faq))
     dp.add_handler(CommandHandler("editfaq", edit_faq))
@@ -590,19 +595,15 @@ def main():
     dp.add_handler(CommandHandler("stats", stats_command))
     dp.add_handler(CommandHandler("sync", sync_command))
     
-    # Обработчики кнопок
     dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
     dp.add_handler(CallbackQueryHandler(button_callback))
     
-    # Обработчик сообщений от админа (для ответа на кнопки)
     dp.add_handler(MessageHandler(
         Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
         handle_admin_message
     ))
-    
-    # Обработчик сообщений от всех
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
     
     dp.add_error_handler(error_handler)
