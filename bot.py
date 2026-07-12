@@ -1,4 +1,4 @@
-# bot.py - Полная версия с новой архитектурой поиска
+# bot.py - Финальная версия с кнопкой для скачивания APK
 
 import logging
 import json
@@ -208,6 +208,7 @@ def start(update: Update, context):
         [InlineKeyboardButton("📋 Частые вопросы", callback_data="faq")],
         [InlineKeyboardButton("📞 Связаться с оператором", callback_data="operator")],
         [InlineKeyboardButton("📢 Официальный канал", url="https://t.me/vipg_channel")],
+        [InlineKeyboardButton("📱 Скачать приложение", callback_data="apk")],  # ← НОВАЯ КНОПКА
         [InlineKeyboardButton("🆘 Помощь", callback_data="help")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -226,7 +227,8 @@ def help_command(update: Update, context):
     text = "🤖 *VIP Game | Support Bot*\n\n"
     text += "👤 *Команды для пользователей*\n"
     text += "/start — Начать диалог\n"
-    text += "/help — Справка\n\n"
+    text += "/help — Справка\n"
+    text += "/apk — Скачать приложение для Android\n\n"
     text += "📎 *Вы также можете отправить:*\n"
     text += "• текстовое сообщение\n"
     text += "• фотографию\n"
@@ -265,6 +267,21 @@ def help_command(update: Update, context):
     else:
         update.message.reply_text(text, parse_mode='Markdown')
 
+def apk_command(update: Update, context):
+    """Отправляет ссылку на скачивание APK"""
+    text = (
+        "📱 *Скачать приложение VIP Game для Android*\n\n"
+        "Нажмите на ссылку ниже, чтобы скачать APK-файл:\n"
+        "[Скачать APK](https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.0/VIP.Game.apk)\n\n"
+        "📌 *Как установить:*\n"
+        "1. Скачайте файл\n"
+        "2. Откройте его на телефоне\n"
+        "3. Разрешите установку из неизвестных источников\n"
+        "4. Нажмите «Установить»\n"
+        "5. Готово! 🚀"
+    )
+    update.message.reply_text(text, parse_mode='Markdown', disable_web_page_preview=True)
+
 def add_faq(update: Update, context):
     if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
@@ -296,7 +313,7 @@ def add_faq(update: Update, context):
         new_id = max([item.get('id', 0) for item in faq_list], default=0) + 1
         faq_list.append({
             'id': new_id,
-            'slug': f"faq_{new_id}",  # временный slug
+            'slug': f"faq_{new_id}",
             'keywords': keywords,
             'answer': answer
         })
@@ -820,6 +837,21 @@ def button_callback(update: Update, context):
             f"Формат: `ключевые_слова | ответ`\n"
             f"Пример: `любовь,обожаю | Спасибо! 😊`"
         )
+    
+    elif data == "apk":
+        query.edit_message_text(
+            "📱 *Скачать приложение VIP Game для Android*\n\n"
+            "Нажмите на ссылку ниже, чтобы скачать APK-файл:\n"
+            "[Скачать APK](https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.0/VIP.Game.apk)\n\n"
+            "📌 *Как установить:*\n"
+            "1. Скачайте файл\n"
+            "2. Откройте его на телефоне\n"
+            "3. Разрешите установку из неизвестных источников\n"
+            "4. Нажмите «Установить»\n"
+            "5. Готово! 🚀",
+            parse_mode='Markdown',
+            disable_web_page_preview=True
+        )
 
 def handle_admin_message(update: Update, context):
     user = update.effective_user
@@ -1086,6 +1118,7 @@ def main():
     dp.add_handler(CommandHandler("users", users_command))
     dp.add_handler(CommandHandler("ping", ping_command))
     dp.add_handler(CommandHandler("version", version_command))
+    dp.add_handler(CommandHandler("apk", apk_command))
     
     dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
@@ -1126,6 +1159,7 @@ def main():
     logger.info("  /ping - проверка работы")
     logger.info("  /version - версия бота")
     logger.info("  /sync - синхронизировать с GitHub")
+    logger.info("  /apk - скачать приложение для Android")
     logger.info("📎 Бот принимает фото, видео и файлы")
     
     updater.start_polling()
