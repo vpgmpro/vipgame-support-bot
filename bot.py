@@ -273,7 +273,7 @@ def send_apk_document(update: Update, context):
     chat_id = update.effective_chat.id
     
     # === ОБНОВЛЁННАЯ ССЫЛКА ===
-    apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.4/VIP.Game.apk"
+    apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.1/VIPGame.apk"
     
     # Отправляем сообщение, что файл загружается
     msg = update.message.reply_text("⏳ Загружаю приложение...")
@@ -284,7 +284,7 @@ def send_apk_document(update: Update, context):
             context.bot.send_document(
                 chat_id=chat_id,
                 document=response.content,
-                filename="VIP.Game.apk",
+                filename="VIPGame.apk",
                 caption="📱 *VIP Game для Android*\n\nНажмите на файл, чтобы скачать и установить.\n\n📌 *Как установить:*\n1. Откройте файл\n2. Разрешите установку из неизвестных источников\n3. Нажмите «Установить»",
                 parse_mode='Markdown'
             )
@@ -854,7 +854,7 @@ def button_callback(update: Update, context):
     elif data == "apk":
         chat_id = query.message.chat.id
         # === ОБНОВЛЁННАЯ ССЫЛКА ===
-        apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.4/VIP.Game.apk"
+        apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.1/VIPGame.apk"
         
         query.edit_message_text("⏳ Загружаю приложение...")
         
@@ -864,7 +864,7 @@ def button_callback(update: Update, context):
                 context.bot.send_document(
                     chat_id=chat_id,
                     document=response.content,
-                    filename="VIP.Game.apk",
+                    filename="VIPGame.apk",
                     caption="📱 *VIP Game для Android*\n\nНажмите на файл, чтобы скачать и установить.\n\n📌 *Как установить:*\n1. Откройте файл\n2. Разрешите установку из неизвестных источников\n3. Нажмите «Установить»",
                     parse_mode='Markdown'
                 )
