@@ -1,4 +1,4 @@
-# bot.py - Полная версия с фильтрацией стоп-слов
+# bot.py - Полная версия с новой архитектурой поиска
 
 import logging
 import json
@@ -14,6 +14,10 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryH
 
 from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE, CHANNEL_ID
 from database import init_db, save_user, save_question, save_answer, get_stats, get_unanswered_questions, get_last_questions, get_total_users
+
+# === НОВАЯ АРХИТЕКТУРА ПОИСКА ===
+from repository import FAQRepository
+from search import SearchEngine
 
 # === ВЕРСИЯ БОТА ===
 BOT_VERSION = "2.0"
@@ -37,11 +41,16 @@ threading.Thread(target=run_flask, daemon=True).start()
 MIN_MATCH_RATIO = 0.3
 EXACT_MATCH_BONUS = 100
 LOG_SEARCH_DEBUG = True
+TOPIC_BONUS = 15
 
-# Стоп-слова (игнорируются при поиске)
+# Стоп-слова
 STOP_WORDS = {'что', 'как', 'где', 'когда', 'ли', 'это', 'такое', 'то', 'чем', 'для', 'без', 'по', 'с', 'в', 'на', 'зачем', 'почему', 'откуда', 'куда', 'кто', 'чей', 'какой', 'какая', 'какое', 'какие', 'мой', 'твой', 'свой', 'наш', 'ваш', 'его', 'её', 'их', 'быть', 'стать', 'являться', 'иметь', 'можно', 'нужно', 'надо', 'будет', 'есть'}
 
+# Темы
+TOPIC_WORDS = {'аккаунт', 'игра', 'маркет', 'кристалл', 'статус', 'ячейка'}
+
 _faq_cache = None
+_faq_cache_file = None
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -54,8 +63,12 @@ GITHUB_REPO = os.environ.get('GITHUB_REPO', 'vpgmpro/vipgame-support-bot')
 GITHUB_BRANCH = os.environ.get('GITHUB_BRANCH', 'main')
 GITHUB_FILE_PATH = os.environ.get('GITHUB_FILE_PATH', 'faq.json')
 
-# === ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ ===
+# === ИНИЦИАЛИЗАЦИЯ ===
 init_db()
+
+# === НОВАЯ АРХИТЕКТУРА ===
+repo = FAQRepository("faq.json")
+search = SearchEngine(repo)
 
 # === РАБОТА С ФАЙЛАМИ ===
 
@@ -118,8 +131,10 @@ def push_to_github():
 # === КЕШИРОВАНИЕ ===
 
 def invalidate_faq_cache():
-    global _faq_cache
+    global _faq_cache, _faq_cache_file
     _faq_cache = None
+    _faq_cache_file = None
+    repo.invalidate()
     logger.info("🔄 Кеш FAQ сброшен")
 
 def normalize_text(text):
@@ -129,9 +144,9 @@ def normalize_text(text):
     return text
 
 def get_faq_with_lemmas():
-    global _faq_cache
+    global _faq_cache, _faq_cache_file
     
-    if _faq_cache is not None:
+    if _faq_cache is not None and _faq_cache_file == FAQ_FILE:
         return _faq_cache
     
     faq_list = load_faq()
@@ -141,120 +156,44 @@ def get_faq_with_lemmas():
         cache_item = {
             'id': faq.get('id'),
             'answer': faq.get('answer', ''),
-            'keywords': faq.get('keywords', [])
+            'keywords': faq.get('keywords', []),
+            'normalized_keywords': [],
+            'topics': set(),
+            'lemmas': []
         }
+        
+        for keyword in faq.get('keywords', []):
+            keyword_norm = normalize_text(keyword)
+            cache_item['normalized_keywords'].append(keyword_norm)
+            
+            # Лемматизация (если есть pymorphy3)
+            try:
+                import pymorphy3
+                morph = pymorphy3.MorphAnalyzer()
+                keyword_lemmas = ' '.join(morph.parse(w)[0].normal_form for w in keyword_norm.split())
+            except:
+                keyword_lemmas = keyword_norm
+            cache_item['lemmas'].append(keyword_lemmas)
+            
+            # Определяем темы
+            keyword_tokens = set(keyword_norm.split())
+            for w in keyword_tokens:
+                if w in TOPIC_WORDS:
+                    cache_item['topics'].add(w)
+        
         cache_data.append(cache_item)
     
     _faq_cache = cache_data
+    _faq_cache_file = FAQ_FILE
     logger.info(f"✅ Кеш FAQ загружен: {len(cache_data)} записей")
     return _faq_cache
 
-# === ПОИСК ===
+# === ПОИСК (старая функция для совместимости) ===
 
 def find_answer(question):
-    logger.info(f"🔎 find_answer вызвана с вопросом: '{question}'")
-    
-    normalized_question = normalize_text(question)
-    
-    # === ШАГ 1: Точное совпадение ===
-    faq_list = get_faq_with_lemmas()
-    
-    for cache_item in faq_list:
-        for keyword in cache_item.get('keywords', []):
-            normalized_keyword = normalize_text(keyword)
-            if normalized_question == normalized_keyword:
-                logger.info(f"✅ Точное совпадение: '{keyword}' -> FAQ ID {cache_item.get('id')}")
-                return cache_item.get('answer')
-    
-    # === ШАГ 2: Поиск с фильтрацией стоп-слов ===
-    # Убираем стоп-слова из вопроса
-    question_words = [
-        w for w in normalized_question.split() 
-        if w not in STOP_WORDS
-    ]
-    question_words_set = set(question_words)
-    
-    if not question_words:
-        question_words = normalized_question.split()
-        question_words_set = set(question_words)
-    
-    best_answer = None
-    best_score = -1
-    best_keyword_word_count = 0
-    best_winner_keyword = ''
-    best_faq_id = None
-    
-    for cache_item in faq_list:
-        max_keyword_score = 0
-        best_keyword_for_faq = ''
-        best_keyword_count_for_faq = 0
-        
-        for keyword in cache_item.get('keywords', []):
-            keyword_norm = normalize_text(keyword)
-            
-            # Убираем стоп-слова из ключевого слова
-            keyword_words = [
-                w for w in keyword_norm.split() 
-                if w not in STOP_WORDS
-            ]
-            keyword_words_set = set(keyword_words)
-            keyword_len = len(keyword_words)
-            
-            if keyword_len == 0:
-                continue
-            
-            matched_words = len(question_words_set & keyword_words_set)
-            match_ratio = matched_words / keyword_len
-            
-            if match_ratio < MIN_MATCH_RATIO:
-                continue
-            
-            score = match_ratio * 10
-            
-            # Проверяем вхождение полной фразы (без стоп-слов)
-            keyword_without_stops = ' '.join(keyword_words)
-            question_without_stops = ' '.join(question_words)
-            if keyword_without_stops in question_without_stops:
-                score += 30
-            
-            if keyword_len >= 2:
-                score += keyword_len * 2
-            else:
-                score += 1
-            
-            if score > max_keyword_score:
-                max_keyword_score = score
-                best_keyword_for_faq = keyword_norm
-                best_keyword_count_for_faq = keyword_len
-        
-        if max_keyword_score > best_score or (
-            max_keyword_score == best_score and 
-            best_keyword_count_for_faq > best_keyword_word_count
-        ):
-            best_score = max_keyword_score
-            best_answer = cache_item.get('answer')
-            best_keyword_word_count = best_keyword_count_for_faq
-            best_winner_keyword = best_keyword_for_faq
-            best_faq_id = cache_item.get('id')
-    
-    if LOG_SEARCH_DEBUG:
-        if best_answer and best_score >= 1:
-            logger.info(
-                f"[FAQ] Вопрос: '{normalized_question}'\n"
-                f"  → Победитель FAQ ID: {best_faq_id}\n"
-                f"  → Ключевое слово: '{best_winner_keyword}'\n"
-                f"  → Счёт: {best_score:.2f}\n"
-                f"  → Ответ: {best_answer[:80]}...\n"
-                f"  → {'-' * 40}"
-            )
-        else:
-            logger.info(
-                f"[FAQ] Вопрос: '{normalized_question}'\n"
-                f"  → Совпадений не найдено (score: {best_score:.2f})\n"
-                f"  → {'-' * 40}"
-            )
-    
-    return best_answer if best_score >= 1 else None
+    """Старая функция, использует новый SearchEngine"""
+    result = search.find_best(question)
+    return result.answer
 
 # === ОСТАЛЬНЫЕ ФУНКЦИИ ===
 
@@ -357,6 +296,7 @@ def add_faq(update: Update, context):
         new_id = max([item.get('id', 0) for item in faq_list], default=0) + 1
         faq_list.append({
             'id': new_id,
+            'slug': f"faq_{new_id}",  # временный slug
             'keywords': keywords,
             'answer': answer
         })
@@ -502,9 +442,10 @@ def list_faq(update: Update, context):
     text = "📚 *База знаний:*\n\n"
     for faq in faq_list:
         faq_id = faq.get('id')
+        slug = faq.get('slug', 'no-slug')
         keywords = faq.get('keywords', [])
         answer = faq.get('answer', '')
-        text += f"*ID {faq_id}*. {', '.join(keywords)}\n"
+        text += f"*ID {faq_id}* ({slug}): {', '.join(keywords)}\n"
         text += f"📝 {answer[:100]}{'...' if len(answer) > 100 else ''}\n\n"
     
     update.message.reply_text(text, parse_mode='Markdown')
@@ -538,8 +479,12 @@ def findfaq_command(update: Update, context):
     
     text = f"🔍 *Результаты поиска по '{search_word}':*\n\n"
     for faq in results[:5]:
-        text += f"*ID {faq.get('id')}*: {', '.join(faq.get('keywords', []))}\n"
-        text += f"📝 {faq.get('answer', '')}\n\n"
+        faq_id = faq.get('id')
+        slug = faq.get('slug', 'no-slug')
+        keywords = faq.get('keywords', [])
+        answer = faq.get('answer', '')
+        text += f"*ID {faq_id}* ({slug}): {', '.join(keywords)}\n"
+        text += f"📝 {answer}\n\n"
     
     if len(results) > 5:
         text += f"... и ещё {len(results) - 5} результатов. Используйте /listfaq для просмотра всех."
@@ -560,8 +505,7 @@ def reload_command(update: Update, context):
         return
     
     invalidate_faq_cache()
-    faq_list = get_faq_with_lemmas()
-    
+    faq_list = load_faq()
     update.message.reply_text(
         f"✅ FAQ перезагружены!\n"
         f"📚 Всего записей: {len(faq_list)}"
@@ -693,9 +637,105 @@ def version_command(update: Update, context):
     text += f"📅 Сборка: {BOT_BUILD_DATE}\n"
     text += f"📚 FAQ: {len(faq_list)}\n"
     text += f"🔗 GitHub: {GITHUB_BRANCH}\n"
+    text += f"🔍 Search Engine: 2.0.0\n"
     text += f"🔄 Статус: ✅ Онлайн"
     
     update.message.reply_text(text, parse_mode='Markdown')
+
+def admin_reply(update: Update, context):
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    if update.message.photo:
+        photo = update.message.photo[-1]
+        caption = update.message.caption or "📸"
+        parts = caption.split(' ', 1)
+        if len(parts) >= 2 and parts[0].isdigit():
+            user_id = int(parts[0])
+            reply_text = parts[1] if len(parts) > 1 else "Фото"
+            try:
+                context.bot.send_photo(
+                    chat_id=user_id,
+                    photo=photo.file_id,
+                    caption=f"📨 *Ответ поддержки:*\n\n{reply_text}",
+                    parse_mode='Markdown'
+                )
+                update.message.reply_text(f"✅ Фото отправлено пользователю {user_id}!")
+                return
+            except Exception as e:
+                update.message.reply_text(f"❌ Ошибка: {e}")
+                return
+        else:
+            update.message.reply_text("❌ Формат: /reply ID текст")
+            return
+    
+    if update.message.video:
+        video = update.message.video
+        caption = update.message.caption or "🎬"
+        parts = caption.split(' ', 1)
+        if len(parts) >= 2 and parts[0].isdigit():
+            user_id = int(parts[0])
+            reply_text = parts[1] if len(parts) > 1 else "Видео"
+            try:
+                context.bot.send_video(
+                    chat_id=user_id,
+                    video=video.file_id,
+                    caption=f"📨 *Ответ поддержки:*\n\n{reply_text}",
+                    parse_mode='Markdown'
+                )
+                update.message.reply_text(f"✅ Видео отправлено пользователю {user_id}!")
+                return
+            except Exception as e:
+                update.message.reply_text(f"❌ Ошибка: {e}")
+                return
+        else:
+            update.message.reply_text("❌ Формат: /reply ID текст")
+            return
+    
+    if update.message.document:
+        document = update.message.document
+        caption = update.message.caption or f"📄 {document.file_name}"
+        parts = caption.split(' ', 1)
+        if len(parts) >= 2 and parts[0].isdigit():
+            user_id = int(parts[0])
+            reply_text = parts[1] if len(parts) > 1 else "Файл"
+            try:
+                context.bot.send_document(
+                    chat_id=user_id,
+                    document=document.file_id,
+                    caption=f"📨 *Ответ поддержки:*\n\n{reply_text}",
+                    parse_mode='Markdown'
+                )
+                update.message.reply_text(f"✅ Файл отправлен пользователю {user_id}!")
+                return
+            except Exception as e:
+                update.message.reply_text(f"❌ Ошибка: {e}")
+                return
+        else:
+            update.message.reply_text("❌ Формат: /reply ID текст")
+            return
+    
+    try:
+        parts = update.message.text.split(' ', 2)
+        if len(parts) < 3:
+            update.message.reply_text("❌ Используйте: /reply ID_пользователя Текст\n\nИли отправьте фото/видео с подписью: /reply ID текст")
+            return
+        
+        user_id = int(parts[1])
+        reply_text = parts[2]
+        
+        context.bot.send_message(
+            chat_id=user_id,
+            text=f"📨 *Ответ поддержки:*\n\n{reply_text}",
+            parse_mode='Markdown'
+        )
+        update.message.reply_text(f"✅ Ответ отправлен пользователю {user_id}!")
+        
+    except ValueError:
+        update.message.reply_text("❌ ID должен быть числом.")
+    except Exception as e:
+        update.message.reply_text(f"❌ Ошибка: {e}")
 
 def faq_list_callback(update: Update, context):
     query = update.callback_query
@@ -787,9 +827,7 @@ def handle_admin_message(update: Update, context):
     if not is_admin(user.id):
         return
     
-    # === ОБРАБОТКА POST ===
     if context.user_data.get('waiting_post'):
-        # Публикуем в канал
         if update.message.photo:
             photo = update.message.photo[-1]
             caption = update.message.caption or "📸"
@@ -828,7 +866,6 @@ def handle_admin_message(update: Update, context):
         context.user_data['waiting_post'] = None
         return
     
-    # === ОБРАБОТКА ОТВЕТА ПОЛЬЗОВАТЕЛЮ ===
     if context.user_data.get('reply_to_user'):
         target_user_id = context.user_data['reply_to_user']
         
@@ -889,7 +926,6 @@ def handle_admin_message(update: Update, context):
         context.user_data['reply_to_user'] = None
         return
     
-    # === ОБРАБОТКА ДОБАВЛЕНИЯ FAQ ===
     if context.user_data.get('addfaq_user'):
         try:
             content = update.message.text
@@ -912,6 +948,7 @@ def handle_admin_message(update: Update, context):
             new_id = max([item.get('id', 0) for item in faq_list], default=0) + 1
             faq_list.append({
                 'id': new_id,
+                'slug': f"faq_{new_id}",
                 'keywords': keywords,
                 'answer': answer
             })
@@ -945,10 +982,8 @@ def post_command(update: Update, context):
 def handle_message(update: Update, context):
     user = update.effective_user
     
-    # Сохраняем пользователя
     save_user(user)
     
-    # Если админ в режиме поста или ответа — пропускаем
     if context.user_data.get('waiting_post') or context.user_data.get('reply_to_user') or context.user_data.get('addfaq_user'):
         return
     
@@ -1004,7 +1039,9 @@ def handle_message(update: Update, context):
         context.user_data['waiting_for_operator'] = False
         return
     
-    answer = find_answer(question)
+    # === НОВЫЙ ПОИСК ===
+    result = search.find_best(question)
+    answer = result.answer
     
     if answer:
         update.message.reply_text(answer)
@@ -1031,9 +1068,9 @@ def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
     
-    # Команды
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help_command))
+    dp.add_handler(CommandHandler("reply", admin_reply))
     dp.add_handler(CommandHandler("addfaq", add_faq))
     dp.add_handler(CommandHandler("editfaq", edit_faq))
     dp.add_handler(CommandHandler("delfaq", delete_faq))
@@ -1050,19 +1087,16 @@ def main():
     dp.add_handler(CommandHandler("ping", ping_command))
     dp.add_handler(CommandHandler("version", version_command))
     
-    # Обработчики кнопок
     dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
     dp.add_handler(CallbackQueryHandler(button_callback))
     
-    # Обработчик сообщений от админа
     dp.add_handler(MessageHandler(
         Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
         handle_admin_message
     ))
     
-    # Обработчики для всех типов сообщений
     dp.add_handler(MessageHandler(Filters.photo, handle_message))
     dp.add_handler(MessageHandler(Filters.video, handle_message))
     dp.add_handler(MessageHandler(Filters.document, handle_message))
