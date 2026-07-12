@@ -1,4 +1,4 @@
-# bot.py - Финальная версия с кнопкой для скачивания APK
+# bot.py - Финальная версия с отправкой APK-файла
 
 import logging
 import json
@@ -208,7 +208,7 @@ def start(update: Update, context):
         [InlineKeyboardButton("📋 Частые вопросы", callback_data="faq")],
         [InlineKeyboardButton("📞 Связаться с оператором", callback_data="operator")],
         [InlineKeyboardButton("📢 Официальный канал", url="https://t.me/vipg_channel")],
-        [InlineKeyboardButton("📱 Скачать приложение", callback_data="apk")],  # ← НОВАЯ КНОПКА
+        [InlineKeyboardButton("📱 Скачать приложение", callback_data="apk")],
         [InlineKeyboardButton("🆘 Помощь", callback_data="help")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -267,20 +267,32 @@ def help_command(update: Update, context):
     else:
         update.message.reply_text(text, parse_mode='Markdown')
 
-def apk_command(update: Update, context):
-    """Отправляет ссылку на скачивание APK"""
-    text = (
-        "📱 *Скачать приложение VIP Game для Android*\n\n"
-        "Нажмите на ссылку ниже, чтобы скачать APK-файл:\n"
-        "[Скачать APK](https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.0/VIP.Game.apk)\n\n"
-        "📌 *Как установить:*\n"
-        "1. Скачайте файл\n"
-        "2. Откройте его на телефоне\n"
-        "3. Разрешите установку из неизвестных источников\n"
-        "4. Нажмите «Установить»\n"
-        "5. Готово! 🚀"
-    )
-    update.message.reply_text(text, parse_mode='Markdown', disable_web_page_preview=True)
+def send_apk_document(update: Update, context):
+    """Отправляет APK-файл пользователю"""
+    user = update.effective_user
+    chat_id = update.effective_chat.id
+    
+    apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.0/VIP.Game.apk"
+    
+    # Отправляем сообщение, что файл загружается
+    msg = update.message.reply_text("⏳ Загружаю приложение...")
+    
+    try:
+        response = requests.get(apk_url, stream=True)
+        if response.status_code == 200:
+            context.bot.send_document(
+                chat_id=chat_id,
+                document=response.content,
+                filename="VIP.Game.apk",
+                caption="📱 *VIP Game для Android*\n\nНажмите на файл, чтобы скачать и установить.\n\n📌 *Как установить:*\n1. Откройте файл\n2. Разрешите установку из неизвестных источников\n3. Нажмите «Установить»",
+                parse_mode='Markdown'
+            )
+            context.bot.delete_message(chat_id=chat_id, message_id=msg.message_id)
+        else:
+            update.message.reply_text("❌ Не удалось загрузить файл. Попробуйте позже.")
+    except Exception as e:
+        logger.error(f"Ошибка отправки APK: {e}")
+        update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
 def add_faq(update: Update, context):
     if not is_admin(update.effective_user.id):
@@ -839,19 +851,28 @@ def button_callback(update: Update, context):
         )
     
     elif data == "apk":
-        query.edit_message_text(
-            "📱 *Скачать приложение VIP Game для Android*\n\n"
-            "Нажмите на ссылку ниже, чтобы скачать APK-файл:\n"
-            "[Скачать APK](https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.0/VIP.Game.apk)\n\n"
-            "📌 *Как установить:*\n"
-            "1. Скачайте файл\n"
-            "2. Откройте его на телефоне\n"
-            "3. Разрешите установку из неизвестных источников\n"
-            "4. Нажмите «Установить»\n"
-            "5. Готово! 🚀",
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
+        chat_id = query.message.chat.id
+        apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.0/VIP.Game.apk"
+        
+        query.edit_message_text("⏳ Загружаю приложение...")
+        
+        try:
+            response = requests.get(apk_url, stream=True)
+            if response.status_code == 200:
+                context.bot.send_document(
+                    chat_id=chat_id,
+                    document=response.content,
+                    filename="VIP.Game.apk",
+                    caption="📱 *VIP Game для Android*\n\nНажмите на файл, чтобы скачать и установить.\n\n📌 *Как установить:*\n1. Откройте файл\n2. Разрешите установку из неизвестных источников\n3. Нажмите «Установить»",
+                    parse_mode='Markdown'
+                )
+                # Удаляем сообщение "Загружаю..."
+                context.bot.delete_message(chat_id=chat_id, message_id=query.message.message_id)
+            else:
+                query.edit_message_text("❌ Не удалось загрузить файл. Попробуйте позже.")
+        except Exception as e:
+            logger.error(f"Ошибка отправки APK через кнопку: {e}")
+            query.edit_message_text("❌ Произошла ошибка. Попробуйте позже.")
 
 def handle_admin_message(update: Update, context):
     user = update.effective_user
@@ -1071,7 +1092,6 @@ def handle_message(update: Update, context):
         context.user_data['waiting_for_operator'] = False
         return
     
-    # === НОВЫЙ ПОИСК ===
     result = search.find_best(question)
     answer = result.answer
     
@@ -1118,7 +1138,7 @@ def main():
     dp.add_handler(CommandHandler("users", users_command))
     dp.add_handler(CommandHandler("ping", ping_command))
     dp.add_handler(CommandHandler("version", version_command))
-    dp.add_handler(CommandHandler("apk", apk_command))
+    dp.add_handler(CommandHandler("apk", send_apk_document))
     
     dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
