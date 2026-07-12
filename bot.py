@@ -1,4 +1,4 @@
-# bot.py - Исправленная версия с кнопкой канала
+# bot.py - Полная версия с точным поиском
 
 import logging
 import json
@@ -153,14 +153,24 @@ def get_faq_with_lemmas():
 def find_answer(question):
     logger.info(f"🔎 find_answer вызвана с вопросом: '{question}'")
     
-    question = normalize_text(question)
-    question_words = question.split()
+    normalized_question = normalize_text(question)
+    
+    # === ШАГ 1: Проверяем точное совпадение ===
+    faq_list = get_faq_with_lemmas()
+    
+    for cache_item in faq_list:
+        for keyword in cache_item.get('keywords', []):
+            normalized_keyword = normalize_text(keyword)
+            if normalized_question == normalized_keyword:
+                logger.info(f"✅ Точное совпадение: '{keyword}' -> FAQ ID {cache_item.get('id')}")
+                return cache_item.get('answer')
+    
+    # === ШАГ 2: Если точного совпадения нет — используем старый алгоритм ===
+    question_words = normalized_question.split()
     question_words_set = set(question_words)
     
     if not question_words:
         return None
-    
-    faq_list = get_faq_with_lemmas()
     
     best_answer = None
     best_score = -1
@@ -190,16 +200,13 @@ def find_answer(question):
             
             score = match_ratio * 10
             
-            if keyword_norm in question:
+            if keyword_norm in normalized_question:
                 score += 30
             
             if keyword_len >= 2:
                 score += keyword_len * 2
             else:
                 score += 1
-            
-            if question == keyword_norm:
-                score += EXACT_MATCH_BONUS
             
             if score > max_keyword_score:
                 max_keyword_score = score
@@ -219,7 +226,7 @@ def find_answer(question):
     if LOG_SEARCH_DEBUG:
         if best_answer and best_score >= 1:
             logger.info(
-                f"[FAQ] Вопрос: '{question}'\n"
+                f"[FAQ] Вопрос: '{normalized_question}'\n"
                 f"  → Победитель FAQ ID: {best_faq_id}\n"
                 f"  → Ключевое слово: '{best_winner_keyword}'\n"
                 f"  → Счёт: {best_score:.2f}\n"
@@ -228,7 +235,7 @@ def find_answer(question):
             )
         else:
             logger.info(
-                f"[FAQ] Вопрос: '{question}'\n"
+                f"[FAQ] Вопрос: '{normalized_question}'\n"
                 f"  → Совпадений не найдено (score: {best_score:.2f})\n"
                 f"  → {'-' * 40}"
             )
