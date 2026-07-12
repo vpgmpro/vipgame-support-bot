@@ -1,11 +1,12 @@
-# search.py
+# search.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
+
 import re
 import logging
 from typing import List, Set, Optional, Tuple
 from models import FAQ, Candidate, SearchResult, SearchDebug
 from repository import FAQRepository
 
-SEARCH_ENGINE_VERSION = "2.0.0"
+SEARCH_ENGINE_VERSION = "2.0.1"
 MIN_MATCH_RATIO = 0.3
 TOPIC_BONUS = 15
 TOPIC_MIN_SCORE = 2
@@ -72,6 +73,30 @@ class SearchEngine:
                     return faq
         return None
     
+    def prepare_faq_for_search(self, faq_list: List[FAQ]) -> List[FAQ]:
+        for faq in faq_list:
+            # === ОЧИЩАЕМ ПЕРЕД ЗАПОЛНЕНИЕМ ===
+            faq.normalized_keywords = []
+            faq.lemmas = []
+            faq.topics = set()
+            
+            for keyword in faq.keywords:
+                keyword_norm = self.normalize_text(keyword)
+                faq.normalized_keywords.append(keyword_norm)
+                
+                if HAS_MORPH:
+                    keyword_lemmas = ' '.join(self.get_lemma(w) for w in keyword_norm.split())
+                else:
+                    keyword_lemmas = keyword_norm
+                faq.lemmas.append(keyword_lemmas)
+                
+                keyword_tokens = set(keyword_norm.split())
+                for w in keyword_tokens:
+                    lemma = self.get_lemma(w) if HAS_MORPH else w
+                    if lemma in TOPIC_WORDS:
+                        faq.topics.add(lemma)
+        return faq_list
+    
     def calculate_match_score(self, question_tokens: Set[str], question_words: List[str], faq: FAQ, idx: int):
         keyword_norm = faq.normalized_keywords[idx]
         if HAS_MORPH and idx < len(faq.lemmas):
@@ -109,23 +134,6 @@ class SearchEngine:
             return 0
         return TOPIC_BONUS * common_topics
     
-    def prepare_faq_for_search(self, faq_list: List[FAQ]) -> List[FAQ]:
-        for faq in faq_list:
-            for keyword in faq.keywords:
-                keyword_norm = self.normalize_text(keyword)
-                faq.normalized_keywords.append(keyword_norm)
-                if HAS_MORPH:
-                    keyword_lemmas = ' '.join(self.get_lemma(w) for w in keyword_norm.split())
-                else:
-                    keyword_lemmas = keyword_norm
-                faq.lemmas.append(keyword_lemmas)
-                keyword_tokens = set(keyword_norm.split())
-                for w in keyword_tokens:
-                    lemma = self.get_lemma(w) if HAS_MORPH else w
-                    if lemma in TOPIC_WORDS:
-                        faq.topics.add(lemma)
-        return faq_list
-    
     def find_best(self, question: str) -> SearchResult:
         normalized_question = self.normalize_text(question)
         faq_list = self.repo.all()
@@ -156,6 +164,7 @@ class SearchEngine:
         
         result = SearchResult()
         candidates = []
+        best_keyword_len = 0  # ← ДЛЯ ТАЙ-БРЕЙКА
         
         for faq in faq_list:
             max_keyword_score = 0
@@ -187,7 +196,11 @@ class SearchEngine:
                     keyword=best_keyword_for_faq
                 ))
             
-            if total_score > result.score or (total_score == result.score and best_keyword_count_for_faq > result.score):
+            # === ИСПРАВЛЕННЫЙ ТАЙ-БРЕЙК ===
+            if total_score > result.score or (
+                total_score == result.score and 
+                best_keyword_count_for_faq > best_keyword_len
+            ):
                 result.score = total_score
                 result.answer = faq.answer
                 result.id = faq.id
@@ -197,6 +210,7 @@ class SearchEngine:
                 result.base_score = base_score
                 result.topic_bonus = topic_bonus
                 result.engine_version = SEARCH_ENGINE_VERSION
+                best_keyword_len = best_keyword_count_for_faq
         
         result.candidates = sorted(candidates, key=lambda x: x.score, reverse=True)[:5]
         
@@ -205,7 +219,13 @@ class SearchEngine:
                 tokens=question_words,
                 lemmas=list(question_tokens),
                 topics=list(question_topics),
-                candidates=[{'slug': c.slug, 'score': c.score, 'base_score': c.base_score, 'topic_bonus': c.topic_bonus} for c in result.candidates[:5]]
+                candidates=[{
+                    'slug': c.slug, 
+                    'score': c.score, 
+                    'base_score': c.base_score, 
+                    'topic_bonus': c.topic_bonus,
+                    'keyword': c.keyword
+                } for c in result.candidates[:5]]
             )
         
         if result.score < 1:
