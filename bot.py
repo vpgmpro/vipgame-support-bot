@@ -1,4 +1,4 @@
-# bot.py - Полная версия с точным поиском
+# bot.py - Полная версия с фильтрацией стоп-слов
 
 import logging
 import json
@@ -38,7 +38,8 @@ MIN_MATCH_RATIO = 0.3
 EXACT_MATCH_BONUS = 100
 LOG_SEARCH_DEBUG = True
 
-STOP_WORDS = {'что', 'как', 'где', 'когда', 'ли', 'это', 'такое', 'то', 'чем', 'для', 'без', 'по', 'с', 'в', 'на'}
+# Стоп-слова (игнорируются при поиске)
+STOP_WORDS = {'что', 'как', 'где', 'когда', 'ли', 'это', 'такое', 'то', 'чем', 'для', 'без', 'по', 'с', 'в', 'на', 'зачем', 'почему', 'откуда', 'куда', 'кто', 'чей', 'какой', 'какая', 'какое', 'какие', 'мой', 'твой', 'свой', 'наш', 'ваш', 'его', 'её', 'их', 'быть', 'стать', 'являться', 'иметь', 'можно', 'нужно', 'надо', 'будет', 'есть'}
 
 _faq_cache = None
 
@@ -155,7 +156,7 @@ def find_answer(question):
     
     normalized_question = normalize_text(question)
     
-    # === ШАГ 1: Проверяем точное совпадение ===
+    # === ШАГ 1: Точное совпадение ===
     faq_list = get_faq_with_lemmas()
     
     for cache_item in faq_list:
@@ -165,12 +166,17 @@ def find_answer(question):
                 logger.info(f"✅ Точное совпадение: '{keyword}' -> FAQ ID {cache_item.get('id')}")
                 return cache_item.get('answer')
     
-    # === ШАГ 2: Если точного совпадения нет — используем старый алгоритм ===
-    question_words = normalized_question.split()
+    # === ШАГ 2: Поиск с фильтрацией стоп-слов ===
+    # Убираем стоп-слова из вопроса
+    question_words = [
+        w for w in normalized_question.split() 
+        if w not in STOP_WORDS
+    ]
     question_words_set = set(question_words)
     
     if not question_words:
-        return None
+        question_words = normalized_question.split()
+        question_words_set = set(question_words)
     
     best_answer = None
     best_score = -1
@@ -185,7 +191,12 @@ def find_answer(question):
         
         for keyword in cache_item.get('keywords', []):
             keyword_norm = normalize_text(keyword)
-            keyword_words = keyword_norm.split()
+            
+            # Убираем стоп-слова из ключевого слова
+            keyword_words = [
+                w for w in keyword_norm.split() 
+                if w not in STOP_WORDS
+            ]
             keyword_words_set = set(keyword_words)
             keyword_len = len(keyword_words)
             
@@ -200,7 +211,10 @@ def find_answer(question):
             
             score = match_ratio * 10
             
-            if keyword_norm in normalized_question:
+            # Проверяем вхождение полной фразы (без стоп-слов)
+            keyword_without_stops = ' '.join(keyword_words)
+            question_without_stops = ' '.join(question_words)
+            if keyword_without_stops in question_without_stops:
                 score += 30
             
             if keyword_len >= 2:
