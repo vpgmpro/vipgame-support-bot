@@ -272,7 +272,8 @@ def send_apk_document(update: Update, context):
     user = update.effective_user
     chat_id = update.effective_chat.id
     
-    apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.0/VIP.Game.apk"
+    # === ОБНОВЛЁННАЯ ССЫЛКА ===
+    apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.4/VIP.Game.apk"
     
     # Отправляем сообщение, что файл загружается
     msg = update.message.reply_text("⏳ Загружаю приложение...")
@@ -852,7 +853,8 @@ def button_callback(update: Update, context):
     
     elif data == "apk":
         chat_id = query.message.chat.id
-        apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.0/VIP.Game.apk"
+        # === ОБНОВЛЁННАЯ ССЫЛКА ===
+        apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.4/VIP.Game.apk"
         
         query.edit_message_text("⏳ Загружаю приложение...")
         
