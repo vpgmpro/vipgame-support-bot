@@ -969,7 +969,7 @@ def handle_admin_message(update: Update, context):
                     caption=f"📨 *Ответ поддержки:*\n\n{caption}",
                     parse_mode='Markdown'
                 )
-                update.message.reply_text(f"✅ Файл отправлено пользователю {target_user_id}!")
+                update.message.reply_text(f"✅ Файл отправлен пользователю {target_user_id}!")
             except Exception as e:
                 update.message.reply_text(f"❌ Ошибка: {e}")
         
@@ -1086,7 +1086,7 @@ def handle_message(update: Update, context):
             document=document.file_id,
             caption=f"📄 ФАЙЛ от @{user.username or user.first_name} (ID: {user.id})\n\n{caption}"
         )
-        update.message.reply_text("✅ Ваш файл отправлено оператору!")
+        update.message.reply_text("✅ Ваш файл отправлен оператору!")
         return
     
     question = update.message.text
@@ -1204,11 +1204,28 @@ def main():
     logger.info("  /apk - скачать приложение для Android")
     logger.info("📎 Бот принимает фото, видео и файлы")
 
-    # === ЗАЩИТА ОТ КОНФЛИКТОВ ===
-    updater.bot.delete_webhook()   # сбрасываем возможный старый webhook
-    time.sleep(1)                 # небольшая пауза перед стартом
+    # === СБРОС WEBHOOK И ПОВТОРНЫЕ ПОПЫТКИ С БОЛЬШОЙ ЗАДЕРЖКОЙ ===
+    updater.bot.delete_webhook()
+    logger.info("⏳ Ожидание 30 секунд перед запуском...")
+    time.sleep(30)
 
-    updater.start_polling()
+    max_retries = 10
+    base_delay = 5  # начальная задержка 5 секунд
+    for attempt in range(max_retries):
+        try:
+            updater.start_polling()
+            logger.info("✅ Бот успешно запущен!")
+            break
+        except Exception as e:
+            logger.error(f"Попытка {attempt+1}/{max_retries} не удалась: {e}")
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)  # 5, 10, 20, 40...
+                logger.info(f"Повторная попытка через {delay} секунд...")
+                time.sleep(delay)
+            else:
+                logger.critical("Не удалось запустить бот после всех попыток.")
+                raise
+
     updater.idle()
 
 if __name__ == "__main__":
