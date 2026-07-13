@@ -45,9 +45,23 @@ def faq_category_handler(update: Update, context):
     query = update.callback_query
     query.answer()
     
-    parts = query.data.split('_')
-    category_key = parts[2]
-    page = int(parts[3]) if len(parts) > 3 else 0
+    # Правильно парсим callback_data с учётом категорий с подчёркиваниями
+    # Формат: faq_cat_{category}_{page}
+    # Например: faq_cat_crystals_market_0
+    data = query.data
+    # Убираем префикс "faq_cat_"
+    rest = data.replace('faq_cat_', '')
+    # Находим последний символ подчёркивания - это разделитель перед номером страницы
+    last_underscore = rest.rfind('_')
+    if last_underscore == -1:
+        query.edit_message_text("❌ Ошибка формата.")
+        return
+    
+    category_key = rest[:last_underscore]
+    try:
+        page = int(rest[last_underscore + 1:])
+    except ValueError:
+        page = 0
     
     questions = repo.by_category(category_key)
     if not questions:
@@ -61,7 +75,7 @@ def faq_category_handler(update: Update, context):
     keyboard = []
     for faq in questions[start:end]:
         keyboard.append([
-            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")  # <-- faq_ans_
+            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")
         ])
     
     nav_buttons = []
@@ -91,7 +105,7 @@ def faq_answer_handler(update: Update, context):
     query = update.callback_query
     query.answer()
     
-    slug = query.data.replace('faq_ans_', '')  # <-- удаляем префикс
+    slug = query.data.replace('faq_ans_', '')
     faq = repo.by_slug(slug)
     if not faq:
         query.edit_message_text("❌ Вопрос не найден.")
@@ -144,7 +158,7 @@ def faq_search_result(update: Update, context):
     keyboard = []
     for faq in results[:10]:
         keyboard.append([
-            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")  # <-- faq_ans_
+            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")
         ])
     
     if len(results) > 10:
