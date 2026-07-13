@@ -1,4 +1,4 @@
-# bot.py - Исправленная версия (простой поиск)
+# bot.py - Очищенная версия с новой архитектурой поиска
 
 import logging
 import json
@@ -29,8 +29,8 @@ from faq_handlers import (
 )
 
 # === ВЕРСИЯ БОТА ===
-BOT_VERSION = "2.0"
-BOT_BUILD_DATE = "12.07.2026"
+BOT_VERSION = "2.1"
+BOT_BUILD_DATE = "13.07.2026"
 
 # === FLASK ДЛЯ RENDER ===
 flask_app = Flask(__name__)
@@ -46,19 +46,7 @@ def run_flask():
 threading.Thread(target=run_flask, daemon=True).start()
 # === КОНЕЦ БЛОКА FLASK ===
 
-# === КОНСТАНТЫ ===
-MIN_MATCH_RATIO = 0.3
-EXACT_MATCH_BONUS = 100
-LOG_SEARCH_DEBUG = True
-TOPIC_BONUS = 15
-
-STOP_WORDS = {'что', 'как', 'где', 'когда', 'ли', 'это', 'такое', 'то', 'чем', 'для', 'без', 'по', 'с', 'в', 'на', 'зачем', 'почему', 'откуда', 'куда', 'кто', 'чей', 'какой', 'какая', 'какое', 'какие', 'мой', 'твой', 'свой', 'наш', 'ваш', 'его', 'её', 'их', 'быть', 'стать', 'являться', 'иметь', 'можно', 'нужно', 'надо', 'будет', 'есть'}
-
-TOPIC_WORDS = {'аккаунт', 'игра', 'маркет', 'кристалл', 'статус', 'ячейка'}
-
-_faq_cache = None
-_faq_cache_file = None
-
+# === НАСТРОЙКА ЛОГГИРОВАНИЯ ===
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -75,6 +63,7 @@ init_db()
 
 # === НОВАЯ АРХИТЕКТУРА ===
 repo = FAQRepository(FAQ_FILE)
+
 
 # === РАБОТА С ФАЙЛАМИ ===
 
@@ -134,72 +123,10 @@ def push_to_github():
         logger.error(f"Ошибка push: {e}")
         return False, f"❌ Ошибка: {e}"
 
-# === КЕШИРОВАНИЕ ===
-
 def invalidate_faq_cache():
-    global _faq_cache, _faq_cache_file
-    _faq_cache = None
-    _faq_cache_file = None
     repo.reload()
     logger.info("🔄 Кеш FAQ сброшен и репозиторий перезагружен")
 
-def normalize_text(text):
-    text = text.lower()
-    text = re.sub(r'[^\w\s]', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
-
-def get_faq_with_lemmas():
-    global _faq_cache, _faq_cache_file
-    
-    if _faq_cache is not None and _faq_cache_file == FAQ_FILE:
-        return _faq_cache
-    
-    faq_list = load_faq()
-    cache_data = []
-    
-    for faq in faq_list:
-        cache_item = {
-            'id': faq.get('id'),
-            'answer': faq.get('answer', ''),
-            'keywords': faq.get('keywords', []),
-            'normalized_keywords': [],
-            'topics': set(),
-            'lemmas': []
-        }
-        
-        for keyword in faq.get('keywords', []):
-            keyword_norm = normalize_text(keyword)
-            cache_item['normalized_keywords'].append(keyword_norm)
-            
-            try:
-                import pymorphy3
-                morph = pymorphy3.MorphAnalyzer()
-                keyword_lemmas = ' '.join(morph.parse(w)[0].normal_form for w in keyword_norm.split())
-            except:
-                keyword_lemmas = keyword_norm
-            cache_item['lemmas'].append(keyword_lemmas)
-            
-            keyword_tokens = set(keyword_norm.split())
-            for w in keyword_tokens:
-                if w in TOPIC_WORDS:
-                    cache_item['topics'].add(w)
-        
-        cache_data.append(cache_item)
-    
-    _faq_cache = cache_data
-    _faq_cache_file = FAQ_FILE
-    logger.info(f"✅ Кеш FAQ загружен: {len(cache_data)} записей")
-    return _faq_cache
-
-# === ФУНКЦИЯ ПОИСКА (упрощённая) ===
-
-def find_answer_simple(question: str):
-    """Простой поиск по ключевым словам"""
-    results = repo.search(question)
-    if results:
-        return results[0].answer
-    return None
 
 # === ОСТАЛЬНЫЕ ФУНКЦИИ ===
 
@@ -350,7 +277,8 @@ def add_faq(update: Update, context):
             'category': 'other',
             'sort': new_id * 10,
             'keywords': keywords,
-            'answer': answer
+            'answer': answer,
+            'aliases': []
         })
         
         save_faq_local(faq_list)
@@ -663,7 +591,7 @@ def version_command(update: Update, context):
     text += f"📅 Сборка: {BOT_BUILD_DATE}\n"
     text += f"📚 FAQ: {len(faq_list)}\n"
     text += f"🔗 GitHub: {GITHUB_BRANCH}\n"
-    text += f"🔍 Поиск: упрощённый (по ключевым словам)\n"
+    text += f"🔍 Поиск: интеллектуальный (с весами и индексацией)\n"
     text += f"🔄 Статус: ✅ Онлайн"
     
     update.message.reply_text(text, parse_mode='Markdown')
@@ -965,7 +893,8 @@ def handle_admin_message(update: Update, context):
                 'category': 'other',
                 'sort': new_id * 10,
                 'keywords': keywords,
-                'answer': answer
+                'answer': answer,
+                'aliases': []
             })
             save_faq_local(faq_list)
             invalidate_faq_cache()
@@ -1060,7 +989,7 @@ def handle_message(update: Update, context):
         faq_search_result(update, context)
         return
     
-    # --- УПРОЩЁННЫЙ ПОИСК ---
+    # === НОВЫЙ ПОИСК через repo.search() ===
     try:
         results = repo.search(question)
         if results:
@@ -1070,7 +999,6 @@ def handle_message(update: Update, context):
             return
     except Exception as e:
         logger.error(f"Ошибка поиска: {e}")
-        # если ошибка, просто передаём оператору
     
     # Если ответ не найден или произошла ошибка
     sent = send_to_admin(context, user, question)
@@ -1146,7 +1074,8 @@ def main():
     
     dp.add_error_handler(error_handler)
     
-    get_faq_with_lemmas()
+    # === НОВАЯ АРХИТЕКТУРА УЖЕ ЗАГРУЖЕНА В repo ===
+    logger.info(f"✅ Бот загружен с {len(repo.all())} FAQ")
     
     logger.info("🤖 Бот поддержки запущен!")
     logger.info(f"📌 Админ ID: {ADMIN_CHAT_ID}")
