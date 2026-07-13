@@ -1,4 +1,4 @@
-# bot.py - Очищенная версия с новой архитектурой поиска
+# bot.py - Полностью исправленная версия (findfaq, addfaq, editfaq)
 
 import logging
 import json
@@ -29,8 +29,8 @@ from faq_handlers import (
 )
 
 # === ВЕРСИЯ БОТА ===
-BOT_VERSION = "2.1"
-BOT_BUILD_DATE = "13.07.2026"
+BOT_VERSION = "2.2"
+BOT_BUILD_DATE = "14.07.2026"
 
 # === FLASK ДЛЯ RENDER ===
 flask_app = Flask(__name__)
@@ -185,8 +185,8 @@ def help_command(update: Update, context):
     
     if is_admin_user:
         text += "🔐 *Команды администратора*\n"
-        text += "/addfaq ключи | ответ — Добавить FAQ\n"
-        text += "/editfaq ID | ключи | ответ — Изменить FAQ\n"
+        text += "/addfaq ключи | ответ [| алиасы] — Добавить FAQ\n"
+        text += "/editfaq ID | ключи | ответ [| алиасы | категория | sort] — Изменить FAQ\n"
         text += "/delfaq ID — Удалить FAQ\n"
         text += "/listfaq — Показать список всех FAQ\n"
         text += "/findfaq слово — Найти в FAQ\n"
@@ -203,7 +203,8 @@ def help_command(update: Update, context):
         text += "/version — Версия бота\n\n"
         text += "📝 *Примеры*\n"
         text += "/addfaq цена,стоимость | 1000 рублей\n"
-        text += "/editfaq 5 | цена,стоимость,сколько стоит | 1500 рублей\n"
+        text += "/addfaq покинуть,выйти | Текст ответа | покинуть игру,как выйти\n"
+        text += "/editfaq 5 | регистрация,аккаунт | Текст ответа | зарегаться,создать аккаунт | account | 15\n"
         text += "/findfaq кристаллы\n"
         text += "/reply 123456789 Привет!\n"
         text += "/post Сегодня вышло обновление!\n"
@@ -244,7 +245,46 @@ def send_apk_document(update: Update, context):
         logger.error(f"Ошибка отправки APK: {e}")
         context.bot.send_message(chat_id=chat_id, text="❌ Произошла ошибка. Попробуйте позже.")
 
+# ============================================================
+# === ИСПРАВЛЕННЫЕ АДМИН-КОМАНДЫ ===
+# ============================================================
+
+def findfaq_command(update: Update, context):
+    """Поиск по FAQ через новый repo.search()"""
+    if not is_admin(update.effective_user.id):
+        update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    
+    parts = update.message.text.split(' ', 1)
+    if len(parts) < 2:
+        update.message.reply_text("❌ Использование: /findfaq слово")
+        return
+    
+    search_word = parts[1].strip()
+    if not search_word:
+        update.message.reply_text("❌ Введите слово для поиска.")
+        return
+    
+    # Используем новый поиск через repo
+    results = repo.search(search_word)
+    
+    if not results:
+        update.message.reply_text(f"❌ По запросу '{search_word}' ничего не найдено.")
+        return
+    
+    text = f"🔍 *Результаты поиска по '{search_word}':*\n\n"
+    for faq in results[:5]:
+        text += f"*ID {faq.id}* ({faq.slug}): {faq.title}\n"
+        text += f"📝 {faq.answer[:200]}{'...' if len(faq.answer) > 200 else ''}\n\n"
+    
+    if len(results) > 5:
+        text += f"... и ещё {len(results) - 5} результатов."
+    
+    update.message.reply_text(text, parse_mode='Markdown')
+
+
 def add_faq(update: Update, context):
+    """Добавление FAQ с поддержкой aliases, автоматической категорией и sort"""
     if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
@@ -252,49 +292,82 @@ def add_faq(update: Update, context):
     try:
         parts = update.message.text.split(' ', 1)
         if len(parts) < 2:
-            update.message.reply_text("❌ Использование: /addfaq ключи | ответ\nНапример: /addfaq оплата,карта | Мы принимаем карты")
+            update.message.reply_text(
+                "❌ Использование: /addfaq ключи | ответ [| алиасы]\n"
+                "Например: /addfaq покинуть,выйти | Текст ответа | покинуть игру,как выйти"
+            )
             return
         
         content = parts[1]
-        if '|' not in content:
+        segments = [s.strip() for s in content.split('|')]
+        
+        if len(segments) < 2:
             update.message.reply_text("❌ Используйте | для разделения ключевых слов и ответа.")
             return
         
-        keywords_str, answer = content.split('|', 1)
-        keywords = [k.strip().lower() for k in keywords_str.split(',') if k.strip()]
-        answer = answer.strip()
+        keywords_str = segments[0]
+        answer = segments[1]
+        aliases_str = segments[2] if len(segments) > 2 else ""
         
-        if not keywords or not answer:
+        if not keywords_str or not answer:
             update.message.reply_text("❌ Ключевые слова и ответ не могут быть пустыми.")
+            return
+        
+        keywords = [k.strip().lower() for k in keywords_str.split(',') if k.strip()]
+        aliases = [a.strip() for a in aliases_str.split(',') if a.strip()] if aliases_str else []
+        
+        if not keywords:
+            update.message.reply_text("❌ Нужно указать хотя бы одно ключевое слово.")
             return
         
         faq_list = load_faq()
         new_id = max([item.get('id', 0) for item in faq_list], default=0) + 1
-        faq_list.append({
+        
+        # Определяем категорию (для простоты ставим 'other')
+        category = 'other'
+        
+        # Определяем sort (максимальный + 10)
+        existing_sorts = [item.get('sort', 0) for item in faq_list if item.get('category') == category]
+        sort = max(existing_sorts, default=0) + 10
+        
+        new_faq = {
             'id': new_id,
             'slug': f"faq_{new_id}",
             'title': answer[:50] if answer else keywords[0].capitalize(),
-            'category': 'other',
-            'sort': new_id * 10,
+            'category': category,
+            'sort': sort,
             'keywords': keywords,
             'answer': answer,
-            'aliases': []
-        })
+            'aliases': aliases
+        }
+        faq_list.append(new_faq)
         
         save_faq_local(faq_list)
         invalidate_faq_cache()
         success, message = push_to_github()
         
         if success:
-            update.message.reply_text(f"✅ FAQ #{new_id} добавлен\n📌 Ключей: {len(keywords)}\n🔄 GitHub: {message}")
+            update.message.reply_text(
+                f"✅ FAQ #{new_id} добавлен\n"
+                f"📌 Ключей: {len(keywords)}\n"
+                f"📌 Алиасов: {len(aliases)}\n"
+                f"📂 Категория: {category}\n"
+                f"🔢 Sort: {sort}\n"
+                f"🔄 GitHub: {message}"
+            )
         else:
-            update.message.reply_text(f"⚠️ FAQ добавлен локально, но не загружен на GitHub.\n❌ Ошибка: {message}")
+            update.message.reply_text(
+                f"⚠️ FAQ добавлен локально, но не загружен на GitHub.\n"
+                f"❌ Ошибка: {message}"
+            )
         
     except Exception as e:
         logger.error(f"Ошибка добавления FAQ: {e}")
         update.message.reply_text(f"❌ Ошибка: {e}")
 
+
 def edit_faq(update: Update, context):
+    """Редактирование FAQ с поддержкой aliases, category, sort"""
     if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
@@ -302,28 +375,39 @@ def edit_faq(update: Update, context):
     try:
         parts = update.message.text.split(' ', 1)
         if len(parts) < 2:
-            update.message.reply_text("❌ Использование: /editfaq ID | новые_ключи | новый_ответ\nНапример: /editfaq 5 | регистрация,аккаунт | Текст ответа")
+            update.message.reply_text(
+                "❌ Использование: /editfaq ID | ключи | ответ [| алиасы | категория | sort]\n"
+                "Например: /editfaq 5 | регистрация,аккаунт | Текст ответа | зарегаться,создать аккаунт | account | 15"
+            )
             return
         
         content = parts[1]
-        if '|' not in content:
-            update.message.reply_text("❌ Используйте | для разделения ID, ключей и ответа.")
+        segments = [s.strip() for s in content.split('|')]
+        
+        if len(segments) < 3:
+            update.message.reply_text(
+                "❌ Минимум: /editfaq ID | ключи | ответ"
+            )
             return
         
-        parts_content = content.split('|')
-        if len(parts_content) < 3:
-            update.message.reply_text("❌ Формат: /editfaq ID | новые_ключи | новый_ответ\nНапример: /editfaq 5 | регистрация,аккаунт | Текст ответа")
+        try:
+            faq_id = int(segments[0])
+        except ValueError:
+            update.message.reply_text("❌ ID должен быть числом.")
             return
         
-        faq_id = int(parts_content[0].strip())
-        keywords_str = parts_content[1].strip()
-        new_answer = parts_content[2].strip()
+        keywords_str = segments[1]
+        new_answer = segments[2]
+        aliases_str = segments[3] if len(segments) > 3 else ""
+        new_category = segments[4] if len(segments) > 4 else ""
+        new_sort_str = segments[5] if len(segments) > 5 else ""
         
         if not keywords_str or not new_answer:
             update.message.reply_text("❌ Ключевые слова и ответ не могут быть пустыми.")
             return
         
         keywords = [k.strip().lower() for k in keywords_str.split(',') if k.strip()]
+        aliases = [a.strip() for a in aliases_str.split(',') if a.strip()] if aliases_str else []
         
         if not keywords:
             update.message.reply_text("❌ Нужно указать хотя бы одно ключевое слово.")
@@ -331,12 +415,29 @@ def edit_faq(update: Update, context):
         
         faq_list = load_faq()
         found = False
+        
         for faq in faq_list:
             if faq.get('id') == faq_id:
                 faq['keywords'] = keywords
                 faq['answer'] = new_answer
-                if 'title' in faq:
-                    faq['title'] = new_answer[:50] if new_answer else keywords[0].capitalize()
+                faq['title'] = new_answer[:50] if new_answer else keywords[0].capitalize()
+                
+                if aliases:
+                    faq['aliases'] = aliases
+                elif 'aliases' not in faq:
+                    faq['aliases'] = []
+                
+                if new_category:
+                    faq['category'] = new_category
+                
+                if new_sort_str:
+                    try:
+                        new_sort = int(new_sort_str)
+                        if new_sort >= 0:
+                            faq['sort'] = new_sort
+                    except ValueError:
+                        pass
+                
                 found = True
                 break
         
@@ -349,15 +450,28 @@ def edit_faq(update: Update, context):
         success, message = push_to_github()
         
         if success:
-            update.message.reply_text(f"✅ FAQ #{faq_id} обновлен\n📌 Ключей: {len(keywords)}\n🔄 GitHub: {message}")
+            update.message.reply_text(
+                f"✅ FAQ #{faq_id} обновлен\n"
+                f"📌 Ключей: {len(keywords)}\n"
+                f"📌 Алиасов: {len(aliases)}\n"
+                f"📂 Категория: {faq.get('category', 'other')}\n"
+                f"🔢 Sort: {faq.get('sort', 0)}\n"
+                f"🔄 GitHub: {message}"
+            )
         else:
-            update.message.reply_text(f"⚠️ FAQ обновлен локально, но не загружен на GitHub.\n❌ Ошибка: {message}")
+            update.message.reply_text(
+                f"⚠️ FAQ обновлен локально, но не загружен на GitHub.\n"
+                f"❌ Ошибка: {message}"
+            )
         
-    except ValueError:
-        update.message.reply_text("❌ ID должен быть числом.")
     except Exception as e:
         logger.error(f"Ошибка редактирования FAQ: {e}")
         update.message.reply_text(f"❌ Ошибка: {e}")
+
+
+# ============================================================
+# === ОСТАЛЬНЫЕ ФУНКЦИИ (без изменений) ===
+# ============================================================
 
 def delete_faq(update: Update, context):
     if not is_admin(update.effective_user.id):
@@ -398,7 +512,6 @@ def list_faq(update: Update, context):
         update.message.reply_text("📋 База знаний пуста.")
         return
     
-    # Компактный вывод: только ID, заголовок и slug
     text = "📚 *База знаний (первые 30 записей):*\n\n"
     for faq in faq_list[:30]:
         faq_id = faq.get('id')
@@ -409,46 +522,6 @@ def list_faq(update: Update, context):
     total = len(faq_list)
     if total > 30:
         text += f"\n... и ещё {total - 30} записей. Используйте /findfaq для поиска."
-    
-    update.message.reply_text(text, parse_mode='Markdown')
-
-def findfaq_command(update: Update, context):
-    if not is_admin(update.effective_user.id):
-        update.message.reply_text("⛔ У вас нет прав администратора.")
-        return
-    
-    parts = update.message.text.split(' ', 1)
-    if len(parts) < 2:
-        update.message.reply_text("❌ Использование: /findfaq слово")
-        return
-    
-    search_word = parts[1].lower().strip()
-    faq_list = load_faq()
-    
-    results = []
-    for faq in faq_list:
-        keywords_str = ' '.join(faq.get('keywords', [])).lower()
-        title = faq.get('title', '').lower()
-        answer = faq.get('answer', '').lower()
-        
-        if search_word in keywords_str or search_word in title or search_word in answer:
-            results.append(faq)
-    
-    if not results:
-        update.message.reply_text(f"❌ По запросу '{search_word}' ничего не найдено.")
-        return
-    
-    text = f"🔍 *Результаты поиска по '{search_word}':*\n\n"
-    for faq in results[:5]:
-        faq_id = faq.get('id')
-        slug = faq.get('slug', 'no-slug')
-        title = faq.get('title', faq.get('keywords', [''])[0].capitalize())
-        answer = faq.get('answer', '')
-        text += f"*ID {faq_id}* ({slug}): {title}\n"
-        text += f"📝 {answer}\n\n"
-    
-    if len(results) > 5:
-        text += f"... и ещё {len(results) - 5} результатов. Используйте /listfaq для просмотра всех."
     
     update.message.reply_text(text, parse_mode='Markdown')
 
@@ -928,11 +1001,9 @@ def handle_message(update: Update, context):
     user = update.effective_user
     save_user(user)
     
-    # Если администратор в режиме ожидания поста/ответа/добавления – не обрабатываем
     if context.user_data.get('waiting_post') or context.user_data.get('reply_to_user') or context.user_data.get('addfaq_user'):
         return
     
-    # Фото, видео, документы
     if update.message.photo:
         photo = update.message.photo[-1]
         caption = update.message.caption or "📸 Фото без подписи"
@@ -966,14 +1037,12 @@ def handle_message(update: Update, context):
         update.message.reply_text("✅ Ваш файл отправлен оператору!")
         return
     
-    # Текстовое сообщение
     question = update.message.text
     logger.info(f"📩 ПОЛУЧЕН ЗАПРОС: '{question}' от {user.id}")
     
     if question.startswith('/'):
         return
     
-    # Если пользователь в режиме "Связаться с оператором"
     if context.user_data.get('waiting_for_operator'):
         sent = send_to_admin(context, user, question)
         save_question(user.id, question)
@@ -984,13 +1053,11 @@ def handle_message(update: Update, context):
         context.user_data['waiting_for_operator'] = False
         return
     
-    # Если пользователь в режиме поиска по FAQ (из faq_search_handler)
     if context.user_data.get('waiting_for_faq_search'):
         from faq_handlers import faq_search_result
         faq_search_result(update, context)
         return
     
-    # === НОВЫЙ ПОИСК через repo.search() ===
     try:
         results = repo.search(question)
         if results:
@@ -1001,7 +1068,6 @@ def handle_message(update: Update, context):
     except Exception as e:
         logger.error(f"Ошибка поиска: {e}")
     
-    # Если ответ не найден или произошла ошибка
     sent = send_to_admin(context, user, question)
     save_question(user.id, question)
     if sent:
@@ -1023,7 +1089,6 @@ def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
     
-    # === КОМАНДЫ ===
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help_command))
     dp.add_handler(CommandHandler("reply", admin_reply))
@@ -1044,26 +1109,16 @@ def main():
     dp.add_handler(CommandHandler("version", version_command))
     dp.add_handler(CommandHandler("apk", send_apk_document))
     
-    # === НОВЫЕ ОБРАБОТЧИКИ FAQ (callback) ===
     dp.add_handler(CallbackQueryHandler(faq_categories_handler, pattern="faq_categories"))
     dp.add_handler(CallbackQueryHandler(faq_category_handler, pattern="faq_cat_"))
     dp.add_handler(CallbackQueryHandler(faq_answer_handler, pattern="faq_ans_"))
     dp.add_handler(CallbackQueryHandler(faq_search_handler, pattern="faq_search"))
     dp.add_handler(CallbackQueryHandler(faq_noop_handler, pattern="faq_noop"))
-    
-    # === ОБРАБОТЧИК ДЛЯ КНОПКИ "ГЛАВНОЕ МЕНЮ" ===
     dp.add_handler(CallbackQueryHandler(main_menu_handler, pattern="main_menu"))
-    
-    # === ОБРАБОТЧИК "СВЯЗАТЬСЯ С ОПЕРАТОРОМ" ===
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
-    
-    # === ОБРАБОТЧИК ДЛЯ КНОПКИ "ПОМОЩЬ" ===
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
-    
-    # === СТАРЫЕ ОБРАБОТЧИКИ (reply_, addfaq_, apk) ===
     dp.add_handler(CallbackQueryHandler(button_callback))
     
-    # === ОБРАБОТЧИКИ СООБЩЕНИЙ ===
     dp.add_handler(MessageHandler(
         Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
         handle_admin_message
@@ -1075,15 +1130,13 @@ def main():
     
     dp.add_error_handler(error_handler)
     
-    # === НОВАЯ АРХИТЕКТУРА УЖЕ ЗАГРУЖЕНА В repo ===
     logger.info(f"✅ Бот загружен с {len(repo.all())} FAQ")
-    
     logger.info("🤖 Бот поддержки запущен!")
     logger.info(f"📌 Админ ID: {ADMIN_CHAT_ID}")
     logger.info(f"🔑 GitHub токен: {'✅ настроен' if GITHUB_TOKEN else '❌ НЕ НАСТРОЕН'}")
     logger.info("📌 Команды администратора:")
-    logger.info("  /addfaq ключи | ответ - добавить")
-    logger.info("  /editfaq ID | ключи | ответ - изменить")
+    logger.info("  /addfaq ключи | ответ [| алиасы] - добавить")
+    logger.info("  /editfaq ID | ключи | ответ [| алиасы | категория | sort] - изменить")
     logger.info("  /delfaq ID - удалить")
     logger.info("  /listfaq - список FAQ")
     logger.info("  /findfaq слово - поиск в FAQ")
@@ -1101,7 +1154,6 @@ def main():
     logger.info("  /apk - скачать приложение для Android")
     logger.info("📎 Бот принимает фото, видео и файлы")
 
-    # === СБРОС WEBHOOK И ПОВТОРНЫЕ ПОПЫТКИ ===
     updater.bot.delete_webhook()
     logger.info("⏳ Ожидание 30 секунд перед запуском...")
     time.sleep(30)
