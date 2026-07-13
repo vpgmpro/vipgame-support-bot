@@ -13,7 +13,6 @@ def faq_categories_handler(update: Update, context):
     
     cats = repo.categories()
     
-    # Собираем кнопки категорий
     cat_buttons = []
     for cat_key, cat_info in sorted(FAQ_CATEGORIES.items(), key=lambda x: x[1]['order']):
         if cat_key in cats and cats[cat_key]:
@@ -29,7 +28,6 @@ def faq_categories_handler(update: Update, context):
     for i in range(0, len(cat_buttons), 2):
         keyboard.append(cat_buttons[i:i+2])
     
-    # Нижняя строка
     keyboard.append([
         InlineKeyboardButton("🔍 Найти вопрос", callback_data="faq_search"),
         InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")
@@ -63,7 +61,7 @@ def faq_category_handler(update: Update, context):
     keyboard = []
     for faq in questions[start:end]:
         keyboard.append([
-            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")  # ← здесь faq_ans_
+            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")
         ])
     
     nav_buttons = []
@@ -93,7 +91,6 @@ def faq_answer_handler(update: Update, context):
     query = update.callback_query
     query.answer()
     
-    # Извлекаем slug после "faq_ans_"
     slug = query.data.replace('faq_ans_', '')
     faq = repo.by_slug(slug)
     if not faq:
@@ -147,7 +144,7 @@ def faq_search_result(update: Update, context):
     keyboard = []
     for faq in results[:10]:
         keyboard.append([
-            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")  # ← здесь faq_ans_
+            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")
         ])
     
     if len(results) > 10:
