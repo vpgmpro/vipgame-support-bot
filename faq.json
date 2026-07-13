@@ -3,6 +3,9 @@
     {
       "id": 1,
       "slug": "greeting",
+      "title": "Привет",
+      "category": "general",
+      "sort": 10,
       "keywords": [
         "привет",
         "здравствуйте",
@@ -15,6 +18,9 @@
     {
       "id": 2,
       "slug": "how_are_you",
+      "title": "Как дела",
+      "category": "general",
+      "sort": 20,
       "keywords": [
         "как дела",
         "как ты",
@@ -26,6 +32,9 @@
     {
       "id": 3,
       "slug": "thanks",
+      "title": "Спасибо",
+      "category": "general",
+      "sort": 30,
       "keywords": [
         "спасибо",
         "благодарю",
@@ -37,6 +46,9 @@
     {
       "id": 4,
       "slug": "what_is_vipgame",
+      "title": "Что такое VIP Game",
+      "category": "about_project",
+      "sort": 10,
       "keywords": [
         "vip game",
         "vipgame",
@@ -54,6 +66,9 @@
     {
       "id": 5,
       "slug": "purpose_of_vipgame",
+      "title": "Цель проекта",
+      "category": "about_project",
+      "sort": 20,
       "keywords": [
         "для чего vip game",
         "зачем vip game",
@@ -67,6 +82,9 @@
     {
       "id": 6,
       "slug": "how_does_vipgame_work",
+      "title": "Как работает проект",
+      "category": "about_project",
+      "sort": 30,
       "keywords": [
         "как работает vip game",
         "как работает проект",
@@ -80,6 +98,9 @@
     {
       "id": 8,
       "slug": "registration",
+      "title": "Регистрация",
+      "category": "account",
+      "sort": 10,
       "keywords": [
         "регистрация",
         "зарегистрироваться",
@@ -95,6 +116,9 @@
     {
       "id": 9,
       "slug": "login",
+      "title": "Вход в аккаунт",
+      "category": "account",
+      "sort": 20,
       "keywords": [
         "вход",
         "войти",
@@ -109,6 +133,9 @@
     {
       "id": 10,
       "slug": "forgot_password",
+      "title": "Забыли пароль",
+      "category": "account",
+      "sort": 30,
       "keywords": [
         "забыл пароль",
         "восстановить пароль",
@@ -121,6 +148,9 @@
     {
       "id": 11,
       "slug": "confirm_email",
+      "title": "Подтверждение почты",
+      "category": "account",
+      "sort": 40,
       "keywords": [
         "подтвердить почту",
         "подтверждение почты",
@@ -133,6 +163,9 @@
     {
       "id": 12,
       "slug": "email_not_received",
+      "title": "Не приходит письмо",
+      "category": "account",
+      "sort": 50,
       "keywords": [
         "не приходит письмо",
         "не пришло письмо",
@@ -145,6 +178,9 @@
     {
       "id": 13,
       "slug": "logout",
+      "title": "Выход из аккаунта",
+      "category": "account",
+      "sort": 60,
       "keywords": [
         "выйти из аккаунта",
         "выйти",
@@ -158,6 +194,9 @@
     {
       "id": 14,
       "slug": "delete_account",
+      "title": "Удаление аккаунта",
+      "category": "account",
+      "sort": 70,
       "keywords": [
         "удалить аккаунт",
         "удаление аккаунта",
@@ -170,6 +209,9 @@
     {
       "id": 16,
       "slug": "edit_profile",
+      "title": "Изменение данных профиля",
+      "category": "account",
+      "sort": 80,
       "keywords": [
         "изменить данные",
         "сменить телефон",
@@ -184,6 +226,9 @@
     {
       "id": 17,
       "slug": "account_blocked",
+      "title": "Аккаунт заблокирован",
+      "category": "account",
+      "sort": 90,
       "keywords": [
         "аккаунт заблокирован",
         "меня заблокировали",
@@ -195,6 +240,9 @@
     {
       "id": 18,
       "slug": "support",
+      "title": "Поддержка",
+      "category": "support",
+      "sort": 10,
       "keywords": [
         "поддержка",
         "служба поддержки",
@@ -212,6 +260,9 @@
     {
       "id": 19,
       "slug": "what_is_game",
+      "title": "Что такое игра",
+      "category": "games",
+      "sort": 10,
       "keywords": [
         "что такое игра",
         "игра",
@@ -225,6 +276,9 @@
     {
       "id": 20,
       "slug": "how_to_join_game",
+      "title": "Как вступить в игру",
+      "category": "games",
+      "sort": 20,
       "keywords": [
         "как вступить в игру",
         "вступить в игру",
@@ -239,6 +293,9 @@
     {
       "id": 21,
       "slug": "how_game_works",
+      "title": "Как проходит игра",
+      "category": "games",
+      "sort": 30,
       "keywords": [
         "как проходит игра",
         "прохождение игры",
@@ -253,6 +310,9 @@
     {
       "id": 22,
       "slug": "game_duration",
+      "title": "Сколько длится игра",
+      "category": "games",
+      "sort": 40,
       "keywords": [
         "сколько длится игра",
         "сколько идет игра",
@@ -265,6 +325,9 @@
     {
       "id": 24,
       "slug": "exit_game",
+      "title": "Выход из игры",
+      "category": "games",
+      "sort": 50,
       "keywords": [
         "выйти из игры",
         "можно выйти из игры",
@@ -278,6 +341,9 @@
     {
       "id": 26,
       "slug": "choose_cell",
+      "title": "Выбор игровой ячейки",
+      "category": "games",
+      "sort": 60,
       "keywords": [
         "можно выбрать любую ячейку",
         "какую ячейку выбрать",
@@ -291,6 +357,9 @@
     {
       "id": 27,
       "slug": "booking_cell",
+      "title": "Бронирование ячейки",
+      "category": "games",
+      "sort": 70,
       "keywords": [
         "бронирование ячейки",
         "забронировать ячейку",
@@ -304,6 +373,9 @@
     {
       "id": 29,
       "slug": "how_to_upgrade_status",
+      "title": "Как повысить статус",
+      "category": "status",
+      "sort": 10,
       "keywords": [
         "как повысить статус",
         "повышение статуса",
@@ -316,6 +388,9 @@
     {
       "id": 30,
       "slug": "market",
+      "title": "Маркет",
+      "category": "crystals_market",
+      "sort": 10,
       "keywords": [
         "маркет",
         "market",
@@ -330,6 +405,9 @@
     {
       "id": 31,
       "slug": "buy_crystals",
+      "title": "Как купить Кристаллы",
+      "category": "crystals_market",
+      "sort": 20,
       "keywords": [
         "как купить кристаллы",
         "купить кристаллы",
@@ -342,6 +420,9 @@
     {
       "id": 32,
       "slug": "crystals_blocked",
+      "title": "Кристаллы заблокированы",
+      "category": "crystals_market",
+      "sort": 30,
       "keywords": [
         "почему заблокированы кристаллы",
         "заблокированы кристаллы",
@@ -354,6 +435,9 @@
     {
       "id": 33,
       "slug": "crystals_locked",
+      "title": "Заблокированные Кристаллы",
+      "category": "crystals_market",
+      "sort": 40,
       "keywords": [
         "можно ли использовать кристаллы выставленные на продажу",
         "свободный баланс",
@@ -365,6 +449,9 @@
     {
       "id": 34,
       "slug": "order_not_selling",
+      "title": "Объявление не продается",
+      "category": "crystals_market",
+      "sort": 50,
       "keywords": [
         "почему не покупают мое объявление",
         "никто не покупает мои кристаллы",
@@ -377,6 +464,9 @@
     {
       "id": 35,
       "slug": "edit_order",
+      "title": "Изменение объявления",
+      "category": "crystals_market",
+      "sort": 60,
       "keywords": [
         "как изменить объявление",
         "изменить объявление",
@@ -389,6 +479,9 @@
     {
       "id": 36,
       "slug": "dispute",
+      "title": "Спор по сделке",
+      "category": "crystals_market",
+      "sort": 70,
       "keywords": [
         "спор по сделке",
         "возник спор",
@@ -402,6 +495,9 @@
     {
       "id": 37,
       "slug": "dispute_evidence",
+      "title": "Доказательства в споре",
+      "category": "crystals_market",
+      "sort": 80,
       "keywords": [
         "какие доказательства нужны",
         "что делать при споре",
@@ -414,6 +510,9 @@
     {
       "id": 38,
       "slug": "order_timeout",
+      "title": "Истекло время сделки",
+      "category": "crystals_market",
+      "sort": 90,
       "keywords": [
         "истекло время сделки",
         "закончилось время сделки",
@@ -427,6 +526,9 @@
     {
       "id": 39,
       "slug": "seller_not_confirm",
+      "title": "Продавец не подтверждает оплату",
+      "category": "crystals_market",
+      "sort": 100,
       "keywords": [
         "оплатил но продавец не подтвердил",
         "продавец не подтверждает оплату",
@@ -438,6 +540,9 @@
     {
       "id": 40,
       "slug": "order_terms",
+      "title": "Условия сделки",
+      "category": "crystals_market",
+      "sort": 110,
       "keywords": [
         "что такое условия сделки",
         "условия сделки",
@@ -449,6 +554,9 @@
     {
       "id": 41,
       "slug": "order_limit",
+      "title": "Лимит объявлений",
+      "category": "crystals_market",
+      "sort": 120,
       "keywords": [
         "сколько объявлений можно создать",
         "можно ли создать несколько объявлений",
@@ -462,6 +570,9 @@
     {
       "id": 42,
       "slug": "game_selection",
+      "title": "Как выбрать игру",
+      "category": "games",
+      "sort": 80,
       "keywords": [
         "как выбрать игру",
         "выбрать игру",
@@ -476,6 +587,9 @@
     {
       "id": 43,
       "slug": "what_is_order",
+      "title": "Что такое объявление",
+      "category": "crystals_market",
+      "sort": 130,
       "keywords": [
         "что такое объявление",
         "объявление",
@@ -494,6 +608,9 @@
     {
       "id": 44,
       "slug": "create_order",
+      "title": "Создание объявления",
+      "category": "crystals_market",
+      "sort": 140,
       "keywords": [
         "как создать объявление",
         "создать объявление",
@@ -513,6 +630,9 @@
     {
       "id": 45,
       "slug": "crystals_not_received",
+      "title": "Кристаллы не поступили",
+      "category": "crystals_market",
+      "sort": 150,
       "keywords": [
         "не пришли кристаллы",
         "не получил кристаллы",
@@ -526,6 +646,9 @@
     {
       "id": 46,
       "slug": "cannot_create_order",
+      "title": "Не могу создать объявление",
+      "category": "crystals_market",
+      "sort": 160,
       "keywords": [
         "не могу создать объявление",
         "не создается объявление",
@@ -539,6 +662,9 @@
     {
       "id": 47,
       "slug": "cannot_delete_order",
+      "title": "Не могу удалить объявление",
+      "category": "crystals_market",
+      "sort": 170,
       "keywords": [
         "не могу удалить объявление",
         "не удаляется объявление",
@@ -552,6 +678,9 @@
     {
       "id": 48,
       "slug": "cannot_confirm_payment",
+      "title": "Не могу подтвердить оплату",
+      "category": "crystals_market",
+      "sort": 180,
       "keywords": [
         "не могу подтвердить оплату",
         "не подтверждается оплата",
@@ -565,6 +694,9 @@
     {
       "id": 51,
       "slug": "mega_inviter_reward",
+      "title": "Вознаграждение Mega Inviter",
+      "category": "megainviter",
+      "sort": 10,
       "keywords": [
         "сколько получает мегаинвайтер",
         "сколько получает mega inviter",
@@ -583,6 +715,9 @@
     {
       "id": 52,
       "slug": "who_is_mega_inviter",
+      "title": "Кто такой Mega Inviter",
+      "category": "megainviter",
+      "sort": 20,
       "keywords": [
         "кто такой мегаинвайтер",
         "что такое мегаинвайтер",
@@ -597,6 +732,9 @@
     {
       "id": 53,
       "slug": "how_to_become_mega_inviter",
+      "title": "Как стать Mega Inviter",
+      "category": "megainviter",
+      "sort": 30,
       "keywords": [
         "как стать мегаинвайтером",
         "как стать mega inviter",
@@ -609,6 +747,9 @@
     {
       "id": 54,
       "slug": "how_mega_inviter_works",
+      "title": "Как работает Mega Inviter",
+      "category": "megainviter",
+      "sort": 40,
       "keywords": [
         "как работает мегаинвайтер",
         "как работает mega inviter",
@@ -621,6 +762,9 @@
     {
       "id": 55,
       "slug": "why_inviter",
+      "title": "Зачем нужен Inviter",
+      "category": "megainviter",
+      "sort": 50,
       "keywords": [
         "зачем нужен inviter",
         "для чего нужен inviter",
@@ -641,6 +785,9 @@
     {
       "id": 56,
       "slug": "why_my_id",
+      "title": "Зачем указывать мой ID",
+      "category": "megainviter",
+      "sort": 60,
       "keywords": [
         "зачем просить указать мой id",
         "зачем новый участник должен указать мой id",
@@ -656,6 +803,9 @@
     {
       "id": 57,
       "slug": "must_play",
+      "title": "Обязательно ли участвовать в играх",
+      "category": "games",
+      "sort": 90,
       "keywords": [
         "обязательно ли участвовать в играх",
         "обязательно ли мне участвовать в играх",
@@ -676,6 +826,9 @@
     {
       "id": 58,
       "slug": "junior",
+      "title": "Что такое Джуниор",
+      "category": "games",
+      "sort": 100,
       "keywords": [
         "что такое джуниор",
         "кто такой джуниор",
@@ -689,6 +842,9 @@
     {
       "id": 59,
       "slug": "premaster",
+      "title": "Что такое Премастер",
+      "category": "games",
+      "sort": 110,
       "keywords": [
         "что такое премастер",
         "кто такой премастер",
@@ -702,6 +858,9 @@
     {
       "id": 60,
       "slug": "master",
+      "title": "Что такое Мастер",
+      "category": "games",
+      "sort": 120,
       "keywords": [
         "что такое мастер",
         "кто такой мастер",
@@ -715,6 +874,9 @@
     {
       "id": 61,
       "slug": "why_13_cells",
+      "title": "Почему 13 ячеек",
+      "category": "games",
+      "sort": 130,
       "keywords": [
         "почему в игре 13 ячеек",
         "почему именно 13 ячеек",
@@ -727,6 +889,9 @@
     {
       "id": 62,
       "slug": "no_free_cells",
+      "title": "Нет свободных ячеек",
+      "category": "games",
+      "sort": 140,
       "keywords": [
         "почему нет свободных ячеек",
         "нет свободных ячеек",
@@ -739,6 +904,9 @@
     {
       "id": 63,
       "slug": "change_cell",
+      "title": "Можно ли сменить ячейку",
+      "category": "games",
+      "sort": 150,
       "keywords": [
         "можно ли поменять ячейку",
         "сменить ячейку",
@@ -751,6 +919,9 @@
     {
       "id": 64,
       "slug": "cell",
+      "title": "Игровая ячейка",
+      "category": "games",
+      "sort": 160,
       "keywords": [
         "игровая ячейка",
         "что такое игровая ячейка",
@@ -763,6 +934,9 @@
     {
       "id": 65,
       "slug": "after_registration",
+      "title": "Что делать после регистрации",
+      "category": "games",
+      "sort": 170,
       "keywords": [
         "зарегистрировался что дальше",
         "что делать после регистрации",
@@ -776,6 +950,9 @@
     {
       "id": 66,
       "slug": "sell_crystals",
+      "title": "Как продать Кристаллы",
+      "category": "crystals_market",
+      "sort": 190,
       "keywords": [
         "как продать кристаллы",
         "продать кристаллы",
@@ -789,6 +966,9 @@
     {
       "id": 67,
       "slug": "when_premaster",
+      "title": "Когда стану Премастером",
+      "category": "games",
+      "sort": 180,
       "keywords": [
         "когда я стану премастером",
         "как стать премастером",
@@ -801,6 +981,9 @@
     {
       "id": 68,
       "slug": "when_master",
+      "title": "Когда стану Мастером",
+      "category": "games",
+      "sort": 190,
       "keywords": [
         "когда я стану мастером",
         "как стать мастером",
@@ -813,6 +996,9 @@
     {
       "id": 69,
       "slug": "how_to_check_status",
+      "title": "Как узнать свой статус",
+      "category": "status",
+      "sort": 20,
       "keywords": [
         "где посмотреть статус",
         "как узнать свой статус",
@@ -826,6 +1012,9 @@
     {
       "id": 70,
       "slug": "green_game",
+      "title": "Зеленая игра",
+      "category": "games",
+      "sort": 200,
       "keywords": [
         "почему игра зеленая",
         "что означает зеленая игра",
@@ -838,6 +1027,9 @@
     {
       "id": 71,
       "slug": "gray_game",
+      "title": "Серая игра",
+      "category": "games",
+      "sort": 210,
       "keywords": [
         "почему игра серая",
         "что означает серая игра",
@@ -850,6 +1042,9 @@
     {
       "id": 72,
       "slug": "cannot_join_game",
+      "title": "Не могу вступить в игру",
+      "category": "games",
+      "sort": 220,
       "keywords": [
         "почему я не могу вступить в игру",
         "не могу вступить в игру",
@@ -863,6 +1058,9 @@
     {
       "id": 73,
       "slug": "after_game",
+      "title": "Что делать после игры",
+      "category": "games",
+      "sort": 230,
       "keywords": [
         "что делать после завершения игры",
         "что дальше после завершения игры",
@@ -876,6 +1074,9 @@
     {
       "id": 74,
       "slug": "what_is_status",
+      "title": "Что такое статус",
+      "category": "status",
+      "sort": 30,
       "keywords": [
         "что такое статус",
         "статус",
@@ -889,6 +1090,9 @@
     {
       "id": 75,
       "slug": "game_finished",
+      "title": "После завершения игры",
+      "category": "games",
+      "sort": 240,
       "keywords": [
         "что происходит после игры",
         "после завершения игры",
@@ -901,6 +1105,9 @@
     {
       "id": 79,
       "slug": "suggest_idea",
+      "title": "Как предложить идею",
+      "category": "about_project",
+      "sort": 40,
       "keywords": [
         "как предложить идею",
         "есть идея",
@@ -914,6 +1121,9 @@
     {
       "id": 81,
       "slug": "partner_reward",
+      "title": "Вознаграждение партнерам",
+      "category": "about_project",
+      "sort": 50,
       "keywords": [
         "получают ли партнеры вознаграждение",
         "есть ли вознаграждение за сотрудничество",
@@ -926,6 +1136,9 @@
     {
       "id": 82,
       "slug": "mined_crystals",
+      "title": "Добытые Кристаллы",
+      "category": "crystals_market",
+      "sort": 200,
       "keywords": [
         "что такое добытые кристаллы",
         "добытые кристаллы",
@@ -936,6 +1149,9 @@
     {
       "id": 83,
       "slug": "how_to_mine_crystals",
+      "title": "Как добывать Кристаллы",
+      "category": "crystals_market",
+      "sort": 210,
       "keywords": [
         "как добывать кристаллы",
         "где добывать кристаллы",
@@ -947,6 +1163,9 @@
     {
       "id": 84,
       "slug": "why_sell_mined",
+      "title": "Зачем продавать добытые",
+      "category": "crystals_market",
+      "sort": 220,
       "keywords": [
         "зачем продавать добытые кристаллы",
         "выгодно ли продавать добытые кристаллы",
@@ -958,6 +1177,9 @@
     {
       "id": 85,
       "slug": "social_media",
+      "title": "Социальные сети",
+      "category": "about_project",
+      "sort": 60,
       "keywords": [
         "социальные сети",
         "страница vip game",
@@ -970,6 +1192,9 @@
     {
       "id": 86,
       "slug": "other_offers",
+      "title": "Иные предложения",
+      "category": "about_project",
+      "sort": 70,
       "keywords": [
         "иные предложения",
         "другое предложение",
@@ -982,6 +1207,9 @@
     {
       "id": 90,
       "slug": "video_content",
+      "title": "Видеоконтент",
+      "category": "about_project",
+      "sort": 80,
       "keywords": [
         "видео vip game",
         "youtube vip game",
@@ -995,6 +1223,9 @@
     {
       "id": 91,
       "slug": "how_to_help",
+      "title": "Как помочь проекту",
+      "category": "about_project",
+      "sort": 90,
       "keywords": [
         "как помочь vip game",
         "хочу помочь vip game",
@@ -1008,6 +1239,9 @@
     {
       "id": 94,
       "slug": "what_is_crystal",
+      "title": "Что такое Кристалл",
+      "category": "crystals_market",
+      "sort": 230,
       "keywords": [
         "что такое кристаллы",
         "что такое crystal",
@@ -1023,6 +1257,9 @@
     {
       "id": 95,
       "slug": "multiple_accounts",
+      "title": "Несколько аккаунтов",
+      "category": "account",
+      "sort": 100,
       "keywords": [
         "можно ли иметь несколько аккаунтов",
         "несколько аккаунтов",
@@ -1040,6 +1277,9 @@
     {
       "id": 96,
       "slug": "account_transfer",
+      "title": "Передача аккаунта",
+      "category": "account",
+      "sort": 110,
       "keywords": [
         "можно ли передавать аккаунт",
         "передать аккаунт",
@@ -1053,6 +1293,9 @@
     {
       "id": 97,
       "slug": "data_collection",
+      "title": "Сбор данных",
+      "category": "account",
+      "sort": 120,
       "keywords": [
         "какие данные собирает vip game",
         "какие данные собирает платформа",
@@ -1064,6 +1307,9 @@
     {
       "id": 98,
       "slug": "delete_data",
+      "title": "Удаление данных",
+      "category": "account",
+      "sort": 130,
       "keywords": [
         "как удалить персональные данные",
         "удалить персональные данные",
@@ -1075,6 +1321,9 @@
     {
       "id": 100,
       "slug": "faq_100",
+      "title": "Telegram-канал",
+      "category": "about_project",
+      "sort": 100,
       "keywords": [
         "как создать telegram канал",
         "как создать telegram-канал",
@@ -1101,6 +1350,9 @@
     {
       "id": 101,
       "slug": "faq_101",
+      "title": "Сколько можно заработать",
+      "category": "games",
+      "sort": 250,
       "keywords": [
         "сколько можно заработать",
         "сколько можно заработать в vip game",
@@ -1120,6 +1372,9 @@
     {
       "id": 102,
       "slug": "faq_102",
+      "title": "Сколько Кристаллов получу",
+      "category": "games",
+      "sort": 260,
       "keywords": [
         "сколько кристаллов можно получить",
         "сколько кристаллов дают",
@@ -1133,6 +1388,9 @@
     {
       "id": 103,
       "slug": "faq_103",
+      "title": "Итоговое вознаграждение",
+      "category": "games",
+      "sort": 270,
       "keywords": [
         "сколько я получу",
         "сколько получу",
@@ -1146,6 +1404,9 @@
     {
       "id": 105,
       "slug": "faq_105",
+      "title": "Стать партнером",
+      "category": "about_project",
+      "sort": 110,
       "keywords": [
         "как стать партнером vip game",
         "стать партнером vip game",
@@ -1162,6 +1423,9 @@
     {
       "id": 106,
       "slug": "faq_106",
+      "title": "Обязательно ли приглашать",
+      "category": "games",
+      "sort": 280,
       "keywords": [
         "сколько нужно пригласить",
         "сколько приглашений нужно",
@@ -1178,6 +1442,9 @@
     {
       "id": 107,
       "slug": "faq_107",
+      "title": "Правила игры",
+      "category": "games",
+      "sort": 290,
       "keywords": [
         "правила игры",
         "какие правила игры",
@@ -1190,6 +1457,9 @@
     {
       "id": 109,
       "slug": "faq_109",
+      "title": "Что такое ставка",
+      "category": "games",
+      "sort": 300,
       "keywords": [
         "что такое ставка",
         "ставка",
