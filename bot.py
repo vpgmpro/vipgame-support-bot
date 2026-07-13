@@ -399,7 +399,8 @@ def list_faq(update: Update, context):
         return
     
     text = "📚 *База знаний:*\n\n"
-    for faq in faq_list:
+    # Ограничиваем вывод первыми 20 вопросами, чтобы не превысить лимит Telegram (4096 символов)
+    for faq in faq_list[:20]:
         faq_id = faq.get('id')
         slug = faq.get('slug', 'no-slug')
         title = faq.get('title', faq.get('keywords', [''])[0].capitalize())
