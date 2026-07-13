@@ -1,9 +1,17 @@
+import json
+import logging
+from typing import List, Optional
+from config import FAQ_FILE
+from models import FAQ
+
+logger = logging.getLogger(__name__)
+
 class FAQRepository:
     def __init__(self, file_path: str = FAQ_FILE):
         self.file_path = file_path
         self.faqs: List[FAQ] = []
-        self._by_slug: dict = {}        # ← добавил подчёркивание
-        self._by_category: dict = {}    # ← добавил подчёркивание
+        self._by_slug: dict = {}
+        self._by_category: dict = {}
         self._load()
     
     def _load(self):
@@ -44,13 +52,28 @@ class FAQRepository:
         return self.faqs
     
     def by_slug(self, slug: str) -> Optional[FAQ]:
-        return self._by_slug.get(slug)   # ← изменил
+        return self._by_slug.get(slug)
     
     def by_category(self, category: str) -> List[FAQ]:
-        return self._by_category.get(category, [])  # ← изменил
+        return self._by_category.get(category, [])
     
     def categories(self) -> dict:
         return self._by_category
     
     def search(self, query: str) -> List[FAQ]:
-        # ... остаётся без изменений
+        query_lower = query.lower().strip()
+        if not query_lower:
+            return []
+        results = []
+        for faq in self.faqs:
+            if query_lower in faq.title.lower():
+                results.append(faq)
+                continue
+            for kw in faq.keywords:
+                if query_lower in kw.lower():
+                    results.append(faq)
+                    break
+        return results
+
+# Глобальный экземпляр
+repo = FAQRepository()
