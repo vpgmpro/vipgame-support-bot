@@ -61,7 +61,7 @@ def faq_category_handler(update: Update, context):
     keyboard = []
     for faq in questions[start:end]:
         keyboard.append([
-            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")
+            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")  # <-- faq_ans_
         ])
     
     nav_buttons = []
@@ -91,7 +91,7 @@ def faq_answer_handler(update: Update, context):
     query = update.callback_query
     query.answer()
     
-    slug = query.data.replace('faq_ans_', '')
+    slug = query.data.replace('faq_ans_', '')  # <-- удаляем префикс
     faq = repo.by_slug(slug)
     if not faq:
         query.edit_message_text("❌ Вопрос не найден.")
@@ -144,7 +144,7 @@ def faq_search_result(update: Update, context):
     keyboard = []
     for faq in results[:10]:
         keyboard.append([
-            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")
+            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")  # <-- faq_ans_
         ])
     
     if len(results) > 10:
