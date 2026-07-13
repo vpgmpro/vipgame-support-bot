@@ -24,10 +24,10 @@ def faq_categories_handler(update: Update, context):
                 )
             )
     
-    # Разбиваем по 4 в ряд
+    # Разбиваем по 2 в ряд, чтобы названия помещались полностью
     keyboard = []
-    for i in range(0, len(cat_buttons), 4):
-        keyboard.append(cat_buttons[i:i+4])
+    for i in range(0, len(cat_buttons), 2):
+        keyboard.append(cat_buttons[i:i+2])
     
     # Нижняя строка
     keyboard.append([
