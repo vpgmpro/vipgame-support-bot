@@ -1,5 +1,3 @@
-# repository.py - НОВАЯ ВЕРСИЯ
-
 import json
 import logging
 from typing import List, Optional
@@ -79,3 +77,8 @@ class FAQRepository:
                     results.append(faq)
                     break
         return results
+
+
+# ===== ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР =====
+# Этот объект импортируется в faq_handlers.py и bot.py
+repo = FAQRepository()
