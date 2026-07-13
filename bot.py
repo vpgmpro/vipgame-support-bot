@@ -215,7 +215,7 @@ def start(update: Update, context):
     save_user(user)
     
     keyboard = [
-        [InlineKeyboardButton("📋 Частые вопросы", callback_data="faq_categories")],  # ← заменено на faq_categories
+        [InlineKeyboardButton("📋 Частые вопросы", callback_data="faq_categories")],
         [InlineKeyboardButton("📞 Связаться с оператором", callback_data="operator")],
         [InlineKeyboardButton("📢 Официальный канал", url="https://t.me/vipg_channel")],
         [InlineKeyboardButton("📱 Скачать приложение", callback_data="apk")],
@@ -337,7 +337,7 @@ def add_faq(update: Update, context):
         faq_list.append({
             'id': new_id,
             'slug': f"faq_{new_id}",
-            'title': answer[:50] if answer else keywords[0].capitalize(),  # временный title
+            'title': answer[:50] if answer else keywords[0].capitalize(),
             'category': 'other',
             'sort': new_id * 10,
             'keywords': keywords,
@@ -345,7 +345,7 @@ def add_faq(update: Update, context):
         })
         
         save_faq_local(faq_list)
-        invalidate_faq_cache()  # обновит репозиторий
+        invalidate_faq_cache()
         success, message = push_to_github()
         
         if success:
@@ -411,7 +411,6 @@ def edit_faq(update: Update, context):
             if faq.get('id') == faq_id:
                 faq['keywords'] = keywords
                 faq['answer'] = new_answer
-                # обновляем title (если есть поле)
                 if 'title' in faq:
                     faq['title'] = new_answer[:50] if new_answer else keywords[0].capitalize()
                 found = True
@@ -1049,6 +1048,7 @@ def handle_message(update: Update, context):
     
     save_user(user)
     
+    # Если администратор в режиме ожидания поста/ответа/добавления – не обрабатываем
     if context.user_data.get('waiting_post') or context.user_data.get('reply_to_user') or context.user_data.get('addfaq_user'):
         return
     
@@ -1132,6 +1132,7 @@ def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
     
+    # === КОМАНДЫ ===
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help_command))
     dp.add_handler(CommandHandler("reply", admin_reply))
@@ -1152,38 +1153,35 @@ def main():
     dp.add_handler(CommandHandler("version", version_command))
     dp.add_handler(CommandHandler("apk", send_apk_document))
     
-    # Новые обработчики FAQ
+    # === НОВЫЕ ОБРАБОТЧИКИ FAQ (callback) ===
     dp.add_handler(CallbackQueryHandler(faq_categories_handler, pattern="faq_categories"))
     dp.add_handler(CallbackQueryHandler(faq_category_handler, pattern="faq_cat_"))
-    dp.add_handler(CallbackQueryHandler(faq_answer_handler, pattern="faq_"))
+    dp.add_handler(CallbackQueryHandler(faq_answer_handler, pattern="faq_ans_"))   # изменено с "faq_"
     dp.add_handler(CallbackQueryHandler(faq_search_handler, pattern="faq_search"))
     dp.add_handler(CallbackQueryHandler(faq_noop_handler, pattern="faq_noop"))
     
-    # Старые обработчики (оставлены для совместимости, но не используются)
-    dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
+    # === СТАРЫЕ ОБРАБОТЧИКИ (совместимость) ===
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
-    dp.add_handler(CallbackQueryHandler(button_callback))
+    dp.add_handler(CallbackQueryHandler(button_callback))  # без паттерна – обрабатывает только reply_ и addfaq_, apk
     
+    # === ОБРАБОТЧИКИ СООБЩЕНИЙ ===
+    # 1. Сначала проверяем, не ожидает ли пользователь поиска по FAQ
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, faq_search_result))
+    
+    # 2. Затем обрабатываем сообщения от администратора (если он в режиме поста/ответа/добавления)
     dp.add_handler(MessageHandler(
         Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
         handle_admin_message
     ))
     
-    # Обработчик для текстового поиска (после всех команд)
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
-    # Поиск по FAQ будет обрабатываться в faq_search_result (но его нужно вызывать после всех других текстовых)
-    # Поэтому добавим его отдельно, но он уже зарегистрирован через faq_search_result как MessageHandler.
-    # Примечание: в faq_search_handler мы устанавливаем waiting_for_faq_search, и потом ловим текст.
-    # Поэтому нужно добавить обработчик текста для поиска, но он должен быть после основного handle_message?
-    # Лучше добавить его как отдельный обработчик, но с проверкой состояния.
-    # Так как у нас уже есть faq_search_result, который проверяет состояние, его нужно добавить в dp.
-    # Добавим его отдельно.
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, faq_search_result))
-    
+    # 3. Обработка фото, видео, документов (пользовательские)
     dp.add_handler(MessageHandler(Filters.photo, handle_message))
     dp.add_handler(MessageHandler(Filters.video, handle_message))
     dp.add_handler(MessageHandler(Filters.document, handle_message))
+    
+    # 4. Обработка текстовых сообщений (пользовательские) – после поиска
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
     
     dp.add_error_handler(error_handler)
     
