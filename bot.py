@@ -1,4 +1,4 @@
-# bot.py - Исправленная версия (оператор, поиск, FAQ)
+# bot.py - Исправленная версия (простой поиск)
 
 import logging
 import json
@@ -18,7 +18,6 @@ from database import init_db, save_user, save_question, save_answer, get_stats, 
 
 # === НОВАЯ АРХИТЕКТУРА ПОИСКА ===
 from repository import FAQRepository
-from search import SearchEngine
 
 # === НОВЫЕ ОБРАБОТЧИКИ FAQ ===
 from faq_handlers import (
@@ -76,7 +75,6 @@ init_db()
 
 # === НОВАЯ АРХИТЕКТУРА ===
 repo = FAQRepository(FAQ_FILE)
-search = SearchEngine(repo)
 
 # === РАБОТА С ФАЙЛАМИ ===
 
@@ -194,9 +192,14 @@ def get_faq_with_lemmas():
     logger.info(f"✅ Кеш FAQ загружен: {len(cache_data)} записей")
     return _faq_cache
 
-def find_answer(question):
-    result = search.find_best(question)
-    return result.answer
+# === ФУНКЦИЯ ПОИСКА (упрощённая) ===
+
+def find_answer_simple(question: str):
+    """Простой поиск по ключевым словам"""
+    results = repo.search(question)
+    if results:
+        return results[0].answer
+    return None
 
 # === ОСТАЛЬНЫЕ ФУНКЦИИ ===
 
@@ -660,7 +663,7 @@ def version_command(update: Update, context):
     text += f"📅 Сборка: {BOT_BUILD_DATE}\n"
     text += f"📚 FAQ: {len(faq_list)}\n"
     text += f"🔗 GitHub: {GITHUB_BRANCH}\n"
-    text += f"🔍 Search Engine: 2.0.0\n"
+    text += f"🔍 Поиск: упрощённый (по ключевым словам)\n"
     text += f"🔄 Статус: ✅ Онлайн"
     
     update.message.reply_text(text, parse_mode='Markdown')
@@ -1053,32 +1056,36 @@ def handle_message(update: Update, context):
     
     # Если пользователь в режиме поиска по FAQ (из faq_search_handler)
     if context.user_data.get('waiting_for_faq_search'):
-        # Вызываем функцию поиска из faq_handlers
         from faq_handlers import faq_search_result
         faq_search_result(update, context)
         return
     
-    # Обычный поиск ответа в FAQ
-    result = search.find_best(question)
-    answer = result.answer
+    # --- УПРОЩЁННЫЙ ПОИСК ---
+    try:
+        results = repo.search(question)
+        if results:
+            answer = results[0].answer
+            update.message.reply_text(answer)
+            save_question(user.id, question, answer)
+            return
+    except Exception as e:
+        logger.error(f"Ошибка поиска: {e}")
+        # если ошибка, просто передаём оператору
     
-    if answer:
-        update.message.reply_text(answer)
-        save_question(user.id, question, answer)
+    # Если ответ не найден или произошла ошибка
+    sent = send_to_admin(context, user, question)
+    save_question(user.id, question)
+    if sent:
+        update.message.reply_text(
+            "✅ Я передал ваш вопрос оператору!\n"
+            "⏳ Ожидайте ответа в ближайшее время.\n\n"
+            "Спасибо за терпение! 😊"
+        )
     else:
-        sent = send_to_admin(context, user, question)
-        save_question(user.id, question)
-        if sent:
-            update.message.reply_text(
-                "✅ Я передал ваш вопрос оператору!\n"
-                "⏳ Ожидайте ответа в ближайшее время.\n\n"
-                "Спасибо за терпение! 😊"
-            )
-        else:
-            update.message.reply_text(
-                "⚠️ К сожалению, не удалось связаться с оператором.\n"
-                "Пожалуйста, попробуйте позже."
-            )
+        update.message.reply_text(
+            "⚠️ К сожалению, не удалось связаться с оператором.\n"
+            "Пожалуйста, попробуйте позже."
+        )
 
 def error_handler(update, context):
     logger.error(f'Update "{update}" вызвал ошибку "{context.error}"')
