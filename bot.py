@@ -1,4 +1,4 @@
-# bot.py - Финальная версия (с исправленными конфликтами)
+# bot.py - Исправленная версия (оператор, поиск, FAQ)
 
 import logging
 import json
@@ -13,7 +13,7 @@ from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 
-from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE, CHANNEL_ID, PORT
+from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE, CHANNEL_ID
 from database import init_db, save_user, save_question, save_answer, get_stats, get_unanswered_questions, get_last_questions, get_total_users
 
 # === НОВАЯ АРХИТЕКТУРА ПОИСКА ===
@@ -26,7 +26,6 @@ from faq_handlers import (
     faq_category_handler,
     faq_answer_handler,
     faq_search_handler,
-    faq_search_result,
     faq_noop_handler
 )
 
@@ -235,7 +234,6 @@ def start(update: Update, context):
         )
 
 def main_menu_handler(update: Update, context):
-    """Обработчик кнопки Главное меню"""
     query = update.callback_query
     query.answer()
     start(update, context)
@@ -798,13 +796,11 @@ def send_to_admin(context, user, question):
         return False
 
 def button_callback(update: Update, context):
-    """Обработчик для reply_, addfaq_ и apk (пропускает все faq_*)"""
     query = update.callback_query
     query.answer()
     
     data = query.data
     
-    # Пропускаем все, что начинается с faq_ (они обрабатываются другими обработчиками)
     if data.startswith(('faq_', 'faq_cat_', 'faq_ans_', 'faq_search', 'faq_noop')):
         return
     
@@ -997,16 +993,16 @@ def post_command(update: Update, context):
 
 def handle_message(update: Update, context):
     user = update.effective_user
-    
     save_user(user)
     
+    # Если администратор в режиме ожидания поста/ответа/добавления – не обрабатываем
     if context.user_data.get('waiting_post') or context.user_data.get('reply_to_user') or context.user_data.get('addfaq_user'):
         return
     
+    # Фото, видео, документы
     if update.message.photo:
         photo = update.message.photo[-1]
         caption = update.message.caption or "📸 Фото без подписи"
-        
         context.bot.send_photo(
             chat_id=ADMIN_CHAT_ID,
             photo=photo.file_id,
@@ -1018,7 +1014,6 @@ def handle_message(update: Update, context):
     elif update.message.video:
         video = update.message.video
         caption = update.message.caption or "🎬 Видео без подписи"
-        
         context.bot.send_video(
             chat_id=ADMIN_CHAT_ID,
             video=video.file_id,
@@ -1030,7 +1025,6 @@ def handle_message(update: Update, context):
     elif update.message.document:
         document = update.message.document
         caption = update.message.caption or f"📄 Файл: {document.file_name}"
-        
         context.bot.send_document(
             chat_id=ADMIN_CHAT_ID,
             document=document.file_id,
@@ -1039,12 +1033,14 @@ def handle_message(update: Update, context):
         update.message.reply_text("✅ Ваш файл отправлен оператору!")
         return
     
+    # Текстовое сообщение
     question = update.message.text
     logger.info(f"📩 ПОЛУЧЕН ЗАПРОС: '{question}' от {user.id}")
     
     if question.startswith('/'):
         return
     
+    # Если пользователь в режиме "Связаться с оператором"
     if context.user_data.get('waiting_for_operator'):
         sent = send_to_admin(context, user, question)
         save_question(user.id, question)
@@ -1055,6 +1051,14 @@ def handle_message(update: Update, context):
         context.user_data['waiting_for_operator'] = False
         return
     
+    # Если пользователь в режиме поиска по FAQ (из faq_search_handler)
+    if context.user_data.get('waiting_for_faq_search'):
+        # Вызываем функцию поиска из faq_handlers
+        from faq_handlers import faq_search_result
+        faq_search_result(update, context)
+        return
+    
+    # Обычный поиск ответа в FAQ
     result = search.find_best(question)
     answer = result.answer
     
@@ -1114,11 +1118,16 @@ def main():
     # === ОБРАБОТЧИК ДЛЯ КНОПКИ "ГЛАВНОЕ МЕНЮ" ===
     dp.add_handler(CallbackQueryHandler(main_menu_handler, pattern="main_menu"))
     
+    # === ОБРАБОТЧИК "СВЯЗАТЬСЯ С ОПЕРАТОРОМ" ===
+    dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
+    
+    # === ОБРАБОТЧИК ДЛЯ КНОПКИ "ПОМОЩЬ" ===
+    dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
+    
     # === СТАРЫЕ ОБРАБОТЧИКИ (reply_, addfaq_, apk) ===
     dp.add_handler(CallbackQueryHandler(button_callback))
     
     # === ОБРАБОТЧИКИ СООБЩЕНИЙ ===
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, faq_search_result))
     dp.add_handler(MessageHandler(
         Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
         handle_admin_message
