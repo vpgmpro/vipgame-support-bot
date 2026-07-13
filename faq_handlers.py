@@ -13,16 +13,23 @@ def faq_categories_handler(update: Update, context):
     
     cats = repo.categories()
     
-    keyboard = []
+    # Собираем кнопки категорий
+    cat_buttons = []
     for cat_key, cat_info in sorted(FAQ_CATEGORIES.items(), key=lambda x: x[1]['order']):
         if cat_key in cats and cats[cat_key]:
-            keyboard.append([
+            cat_buttons.append(
                 InlineKeyboardButton(
                     cat_info['name'],
                     callback_data=f"faq_cat_{cat_key}_0"
                 )
-            ])
+            )
     
+    # Разбиваем по 4 в ряд
+    keyboard = []
+    for i in range(0, len(cat_buttons), 4):
+        keyboard.append(cat_buttons[i:i+4])
+    
+    # Нижняя строка
     keyboard.append([
         InlineKeyboardButton("🔍 Найти вопрос", callback_data="faq_search"),
         InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")
@@ -56,7 +63,7 @@ def faq_category_handler(update: Update, context):
     keyboard = []
     for faq in questions[start:end]:
         keyboard.append([
-            InlineKeyboardButton(faq.title, callback_data=f"faq_{faq.slug}")
+            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")  # ← изменено
         ])
     
     nav_buttons = []
@@ -86,7 +93,8 @@ def faq_answer_handler(update: Update, context):
     query = update.callback_query
     query.answer()
     
-    slug = query.data.replace('faq_', '')
+    # Извлекаем slug (после "faq_ans_")
+    slug = query.data.replace('faq_ans_', '')
     faq = repo.by_slug(slug)
     if not faq:
         query.edit_message_text("❌ Вопрос не найден.")
@@ -139,7 +147,7 @@ def faq_search_result(update: Update, context):
     keyboard = []
     for faq in results[:10]:
         keyboard.append([
-            InlineKeyboardButton(faq.title, callback_data=f"faq_{faq.slug}")
+            InlineKeyboardButton(faq.title, callback_data=f"faq_ans_{faq.slug}")  # ← изменено
         ])
     
     if len(results) > 10:
