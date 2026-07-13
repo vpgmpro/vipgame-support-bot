@@ -1,20 +1,30 @@
-# config.py
 import os
 
-# Токен бота (можно хранить в переменных окружения)
+# === ТОКЕН БОТА ===
 TOKEN = "8853582530:AAHNZcuShC7Aol1wnSL34p1X7_pb_jMfVic"  # Замените на ваш токен
 
-# ID администратора (узнать у @userinfobot)
-ADMIN_CHAT_ID = 8805394165  # Замените на ваш ID
+# === АДМИНИСТРАТОР ===
+ADMIN_CHAT_ID = 8805394165  # Ваш Telegram ID (узнать у @userinfobot)
 
-# Путь к файлу с FAQ
+# === ФАЙЛ С ВОПРОСАМИ ===
 FAQ_FILE = "faq.json"
 
-# Настройки базы данных (опционально)
+# === БАЗА ДАННЫХ ===
 DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///support.db')
-CHANNEL_ID = -1003765070433  # ← ВСТАВЬ СВОЙ ID (с минусом!)
 
-# === НАСТРОЙКИ FAQ ===
+# === КАНАЛ ДЛЯ ПУБЛИКАЦИЙ ===
+CHANNEL_ID = -1003765070433  # ID канала (с минусом!)
+
+# === НАСТРОЙКИ ДЛЯ FLASK (Render) ===
+PORT = int(os.environ.get('PORT', 10000))
+
+# === НАСТРОЙКИ GITHUB (для синхронизации) ===
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')          # Токен GitHub (обязательно в переменных окружения)
+GITHUB_REPO = os.environ.get('GITHUB_REPO', 'vpgmpro/vipgame-support-bot')
+GITHUB_BRANCH = os.environ.get('GITHUB_BRANCH', 'main')
+GITHUB_FILE_PATH = os.environ.get('GITHUB_FILE_PATH', 'faq.json')
+
+# === НАСТРОЙКИ FAQ (категории и пагинация) ===
 FAQ_ITEMS_PER_PAGE = 8
 
 FAQ_CATEGORIES = {
