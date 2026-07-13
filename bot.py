@@ -54,10 +54,8 @@ EXACT_MATCH_BONUS = 100
 LOG_SEARCH_DEBUG = True
 TOPIC_BONUS = 15
 
-# Стоп-слова
 STOP_WORDS = {'что', 'как', 'где', 'когда', 'ли', 'это', 'такое', 'то', 'чем', 'для', 'без', 'по', 'с', 'в', 'на', 'зачем', 'почему', 'откуда', 'куда', 'кто', 'чей', 'какой', 'какая', 'какое', 'какие', 'мой', 'твой', 'свой', 'наш', 'ваш', 'его', 'её', 'их', 'быть', 'стать', 'являться', 'иметь', 'можно', 'нужно', 'надо', 'будет', 'есть'}
 
-# Темы
 TOPIC_WORDS = {'аккаунт', 'игра', 'маркет', 'кристалл', 'статус', 'ячейка'}
 
 _faq_cache = None
@@ -219,12 +217,28 @@ def start(update: Update, context):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    update.message.reply_text(
-        f"👋 Привет, {user.first_name}!\n\n"
-        "Я бот поддержки. Напишите свой вопрос!\n"
-        "Вы также можете отправить фото, видео или файл.",
-        reply_markup=reply_markup
-    )
+    if update.callback_query:
+        query = update.callback_query
+        query.answer()
+        query.edit_message_text(
+            f"👋 Привет, {user.first_name}!\n\n"
+            "Я бот поддержки. Напишите свой вопрос!\n"
+            "Вы также можете отправить фото, видео или файл.",
+            reply_markup=reply_markup
+        )
+    else:
+        update.message.reply_text(
+            f"👋 Привет, {user.first_name}!\n\n"
+            "Я бот поддержки. Напишите свой вопрос!\n"
+            "Вы также можете отправить фото, видео или файл.",
+            reply_markup=reply_markup
+        )
+
+def main_menu_handler(update: Update, context):
+    """Обработчик кнопки Главное меню"""
+    query = update.callback_query
+    query.answer()
+    start(update, context)
 
 def help_command(update: Update, context):
     user_id = update.effective_user.id
@@ -276,24 +290,31 @@ def help_command(update: Update, context):
 def send_apk_document(update: Update, context):
     apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.1/VIPGame.apk"
     
-    msg = update.message.reply_text("⏳ Загружаю приложение...")
+    if update.callback_query:
+        query = update.callback_query
+        query.answer()
+        chat_id = query.message.chat.id
+        msg = query.edit_message_text("⏳ Загружаю приложение...")
+    else:
+        chat_id = update.effective_chat.id
+        msg = update.message.reply_text("⏳ Загружаю приложение...")
     
     try:
         response = requests.get(apk_url, stream=True)
         if response.status_code == 200:
             context.bot.send_document(
-                chat_id=update.effective_chat.id,
+                chat_id=chat_id,
                 document=response.content,
                 filename="VIPGame.apk",
                 caption="📱 *VIP Game для Android*\n\nНажмите на файл, чтобы скачать и установить.\n\n📌 *Как установить:*\n1. Откройте файл\n2. Разрешите установку из неизвестных источников\n3. Нажмите «Установить»",
                 parse_mode='Markdown'
             )
-            context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg.message_id)
+            context.bot.delete_message(chat_id=chat_id, message_id=msg.message_id)
         else:
-            update.message.reply_text("❌ Не удалось загрузить файл. Попробуйте позже.")
+            context.bot.send_message(chat_id=chat_id, text="❌ Не удалось загрузить файл. Попробуйте позже.")
     except Exception as e:
         logger.error(f"Ошибка отправки APK: {e}")
-        update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+        context.bot.send_message(chat_id=chat_id, text="❌ Произошла ошибка. Попробуйте позже.")
 
 def add_faq(update: Update, context):
     if not is_admin(update.effective_user.id):
@@ -741,11 +762,6 @@ def admin_reply(update: Update, context):
     except Exception as e:
         update.message.reply_text(f"❌ Ошибка: {e}")
 
-def faq_list_callback(update: Update, context):
-    query = update.callback_query
-    query.answer()
-    query.edit_message_text("📚 Пожалуйста, выберите категорию в главном меню.")
-
 def operator_request(update: Update, context):
     query = update.callback_query
     query.answer()
@@ -782,13 +798,15 @@ def send_to_admin(context, user, question):
         return False
 
 def button_callback(update: Update, context):
-    # ⚠️ Этот обработчик больше НЕ ИСПОЛЬЗУЕТСЯ для FAQ
-    # Он оставлен только для обратной совместимости со старыми кнопками
-    # (reply_ и addfaq_ обрабатываются в handle_admin_message)
+    """Обработчик для reply_, addfaq_ и apk (пропускает все faq_*)"""
     query = update.callback_query
     query.answer()
     
     data = query.data
+    
+    # Пропускаем все, что начинается с faq_ (они обрабатываются другими обработчиками)
+    if data.startswith(('faq_', 'faq_cat_', 'faq_ans_', 'faq_search', 'faq_noop')):
+        return
     
     if data.startswith('reply_'):
         user_id = int(data.split('_')[1])
@@ -814,25 +832,7 @@ def button_callback(update: Update, context):
             f"Пример: `любовь,обожаю | Спасибо! 😊`"
         )
     elif data == "apk":
-        chat_id = query.message.chat.id
-        apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.1/VIPGame.apk"
-        query.edit_message_text("⏳ Загружаю приложение...")
-        try:
-            response = requests.get(apk_url, stream=True)
-            if response.status_code == 200:
-                context.bot.send_document(
-                    chat_id=chat_id,
-                    document=response.content,
-                    filename="VIPGame.apk",
-                    caption="📱 *VIP Game для Android*\n\nНажмите на файл, чтобы скачать и установить.\n\n📌 *Как установить:*\n1. Откройте файл\n2. Разрешите установку из неизвестных источников\n3. Нажмите «Установить»",
-                    parse_mode='Markdown'
-                )
-                context.bot.delete_message(chat_id=chat_id, message_id=query.message.message_id)
-            else:
-                query.edit_message_text("❌ Не удалось загрузить файл. Попробуйте позже.")
-        except Exception as e:
-            logger.error(f"Ошибка отправки APK через кнопку: {e}")
-            query.edit_message_text("❌ Произошла ошибка. Попробуйте позже.")
+        send_apk_document(update, context)
 
 def handle_admin_message(update: Update, context):
     user = update.effective_user
@@ -1111,7 +1111,10 @@ def main():
     dp.add_handler(CallbackQueryHandler(faq_search_handler, pattern="faq_search"))
     dp.add_handler(CallbackQueryHandler(faq_noop_handler, pattern="faq_noop"))
     
-    # === СТАРЫЕ ОБРАБОТЧИКИ (только для reply_ и addfaq_, apk) ===
+    # === ОБРАБОТЧИК ДЛЯ КНОПКИ "ГЛАВНОЕ МЕНЮ" ===
+    dp.add_handler(CallbackQueryHandler(main_menu_handler, pattern="main_menu"))
+    
+    # === СТАРЫЕ ОБРАБОТЧИКИ (reply_, addfaq_, apk) ===
     dp.add_handler(CallbackQueryHandler(button_callback))
     
     # === ОБРАБОТЧИКИ СООБЩЕНИЙ ===
