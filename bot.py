@@ -1,4 +1,4 @@
-# bot.py - Финальная версия с новой архитектурой FAQ и защитой от конфликтов
+# bot.py - Финальная версия (без button_callback)
 
 import logging
 import json
@@ -7,7 +7,7 @@ import re
 import requests
 import base64
 import threading
-import time  # ← добавлено для паузы
+import time
 from datetime import datetime
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -145,7 +145,7 @@ def invalidate_faq_cache():
     global _faq_cache, _faq_cache_file
     _faq_cache = None
     _faq_cache_file = None
-    repo.reload()  # обновляем репозиторий
+    repo.reload()
     logger.info("🔄 Кеш FAQ сброшен и репозиторий перезагружен")
 
 def normalize_text(text):
@@ -177,7 +177,6 @@ def get_faq_with_lemmas():
             keyword_norm = normalize_text(keyword)
             cache_item['normalized_keywords'].append(keyword_norm)
             
-            # Лемматизация (если есть pymorphy3)
             try:
                 import pymorphy3
                 morph = pymorphy3.MorphAnalyzer()
@@ -186,7 +185,6 @@ def get_faq_with_lemmas():
                 keyword_lemmas = keyword_norm
             cache_item['lemmas'].append(keyword_lemmas)
             
-            # Определяем темы
             keyword_tokens = set(keyword_norm.split())
             for w in keyword_tokens:
                 if w in TOPIC_WORDS:
@@ -199,10 +197,7 @@ def get_faq_with_lemmas():
     logger.info(f"✅ Кеш FAQ загружен: {len(cache_data)} записей")
     return _faq_cache
 
-# === ПОИСК (старая функция для совместимости) ===
-
 def find_answer(question):
-    """Старая функция, использует новый SearchEngine"""
     result = search.find_best(question)
     return result.answer
 
@@ -279,14 +274,11 @@ def help_command(update: Update, context):
         update.message.reply_text(text, parse_mode='Markdown')
 
 def send_apk_document(update: Update, context):
-    """Отправляет APK-файл пользователю"""
     user = update.effective_user
     chat_id = update.effective_chat.id
     
-    # === ОБНОВЛЁННАЯ ССЫЛКА ===
     apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.1/VIPGame.apk"
     
-    # Отправляем сообщение, что файл загружается
     msg = update.message.reply_text("⏳ Загружаю приложение...")
     
     try:
@@ -314,10 +306,7 @@ def add_faq(update: Update, context):
     try:
         parts = update.message.text.split(' ', 1)
         if len(parts) < 2:
-            update.message.reply_text(
-                "❌ Использование: /addfaq ключи | ответ\n"
-                "Например: /addfaq оплата,карта | Мы принимаем карты"
-            )
+            update.message.reply_text("❌ Использование: /addfaq ключи | ответ\nНапример: /addfaq оплата,карта | Мы принимаем карты")
             return
         
         content = parts[1]
@@ -350,16 +339,9 @@ def add_faq(update: Update, context):
         success, message = push_to_github()
         
         if success:
-            update.message.reply_text(
-                f"✅ FAQ #{new_id} добавлен\n"
-                f"📌 Ключей: {len(keywords)}\n"
-                f"🔄 GitHub: {message}"
-            )
+            update.message.reply_text(f"✅ FAQ #{new_id} добавлен\n📌 Ключей: {len(keywords)}\n🔄 GitHub: {message}")
         else:
-            update.message.reply_text(
-                f"⚠️ FAQ добавлен локально, но не загружен на GitHub.\n"
-                f"❌ Ошибка: {message}"
-            )
+            update.message.reply_text(f"⚠️ FAQ добавлен локально, но не загружен на GitHub.\n❌ Ошибка: {message}")
         
     except Exception as e:
         logger.error(f"Ошибка добавления FAQ: {e}")
@@ -373,10 +355,7 @@ def edit_faq(update: Update, context):
     try:
         parts = update.message.text.split(' ', 1)
         if len(parts) < 2:
-            update.message.reply_text(
-                "❌ Использование: /editfaq ID | новые_ключи | новый_ответ\n"
-                "Например: /editfaq 5 | регистрация,аккаунт | Текст ответа"
-            )
+            update.message.reply_text("❌ Использование: /editfaq ID | новые_ключи | новый_ответ\nНапример: /editfaq 5 | регистрация,аккаунт | Текст ответа")
             return
         
         content = parts[1]
@@ -386,10 +365,7 @@ def edit_faq(update: Update, context):
         
         parts_content = content.split('|')
         if len(parts_content) < 3:
-            update.message.reply_text(
-                "❌ Формат: /editfaq ID | новые_ключи | новый_ответ\n"
-                "Например: /editfaq 5 | регистрация,аккаунт | Текст ответа"
-            )
+            update.message.reply_text("❌ Формат: /editfaq ID | новые_ключи | новый_ответ\nНапример: /editfaq 5 | регистрация,аккаунт | Текст ответа")
             return
         
         faq_id = int(parts_content[0].strip())
@@ -426,16 +402,9 @@ def edit_faq(update: Update, context):
         success, message = push_to_github()
         
         if success:
-            update.message.reply_text(
-                f"✅ FAQ #{faq_id} обновлен\n"
-                f"📌 Ключей: {len(keywords)}\n"
-                f"🔄 GitHub: {message}"
-            )
+            update.message.reply_text(f"✅ FAQ #{faq_id} обновлен\n📌 Ключей: {len(keywords)}\n🔄 GitHub: {message}")
         else:
-            update.message.reply_text(
-                f"⚠️ FAQ обновлен локально, но не загружен на GitHub.\n"
-                f"❌ Ошибка: {message}"
-            )
+            update.message.reply_text(f"⚠️ FAQ обновлен локально, но не загружен на GitHub.\n❌ Ошибка: {message}")
         
     except ValueError:
         update.message.reply_text("❌ ID должен быть числом.")
@@ -464,10 +433,7 @@ def delete_faq(update: Update, context):
         if success:
             update.message.reply_text(f"✅ FAQ #{faq_id} удален\n🔄 GitHub: {message}")
         else:
-            update.message.reply_text(
-                f"⚠️ FAQ #{faq_id} удален локально, но не загружен на GitHub.\n"
-                f"❌ Ошибка: {message}"
-            )
+            update.message.reply_text(f"⚠️ FAQ #{faq_id} удален локально, но не загружен на GitHub.\n❌ Ошибка: {message}")
         
     except ValueError:
         update.message.reply_text("❌ ID должен быть числом.")
@@ -555,10 +521,7 @@ def reload_command(update: Update, context):
     
     invalidate_faq_cache()
     faq_list = load_faq()
-    update.message.reply_text(
-        f"✅ FAQ перезагружены!\n"
-        f"📚 Всего записей: {len(faq_list)}"
-    )
+    update.message.reply_text(f"✅ FAQ перезагружены!\n📚 Всего записей: {len(faq_list)}")
 
 def sync_command(update: Update, context):
     if not is_admin(update.effective_user.id):
@@ -585,10 +548,7 @@ def sync_command(update: Update, context):
             invalidate_faq_cache()
             
             faq_list = load_faq()
-            update.message.reply_text(
-                f"✅ Синхронизация выполнена!\n"
-                f"📊 Всего FAQ: {len(faq_list)}"
-            )
+            update.message.reply_text(f"✅ Синхронизация выполнена!\n📊 Всего FAQ: {len(faq_list)}")
         else:
             update.message.reply_text(f"❌ Ошибка GitHub: {response.status_code}")
             
@@ -787,7 +747,6 @@ def admin_reply(update: Update, context):
         update.message.reply_text(f"❌ Ошибка: {e}")
 
 def faq_list_callback(update: Update, context):
-    # Этот обработчик больше не используется, оставлен для совместимости
     query = update.callback_query
     query.answer()
     query.edit_message_text("📚 Пожалуйста, выберите категорию в главном меню.")
@@ -828,11 +787,15 @@ def send_to_admin(context, user, question):
         return False
 
 def button_callback(update: Update, context):
+    # Этот обработчик больше не нужен, его функции перенесены в handle_admin_message
+    # Оставляем только для обратной совместимости, но он не должен перехватывать FAQ
     query = update.callback_query
     query.answer()
+    # Игнорируем все запросы, которые начинаются с faq_
+    if query.data.startswith(('faq_', 'faq_cat_', 'faq_ans_', 'faq_search', 'faq_noop')):
+        return
     
     data = query.data
-    
     if data.startswith('reply_'):
         user_id = int(data.split('_')[1])
         context.user_data['reply_to_user'] = user_id
@@ -841,31 +804,25 @@ def button_callback(update: Update, context):
             f"Просто отправьте текст — бот перешлёт его.\n"
             f"Или отправьте фото/видео/файл с подписью: текст"
         )
-    
     elif data.startswith('addfaq_'):
         user_id = int(data.split('_')[1])
         context.user_data['addfaq_user'] = user_id
-        
         original_message = query.message.text
         try:
             question = original_message.split('📝 Вопрос:\n')[-1]
         except:
             question = "Вопрос не найден"
         context.user_data['addfaq_question'] = question
-        
         query.edit_message_text(
             f"✏️ Введите ключевые слова и ответ для вопроса:\n\n"
             f"📝 Вопрос: {question}\n\n"
             f"Формат: `ключевые_слова | ответ`\n"
             f"Пример: `любовь,обожаю | Спасибо! 😊`"
         )
-    
     elif data == "apk":
         chat_id = query.message.chat.id
         apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.1/VIPGame.apk"
-        
         query.edit_message_text("⏳ Загружаю приложение...")
-        
         try:
             response = requests.get(apk_url, stream=True)
             if response.status_code == 200:
@@ -1049,7 +1006,6 @@ def handle_message(update: Update, context):
     
     save_user(user)
     
-    # Если администратор в режиме ожидания поста/ответа/добавления – не обрабатываем
     if context.user_data.get('waiting_post') or context.user_data.get('reply_to_user') or context.user_data.get('addfaq_user'):
         return
     
@@ -1161,9 +1117,7 @@ def main():
     dp.add_handler(CallbackQueryHandler(faq_search_handler, pattern="faq_search"))
     dp.add_handler(CallbackQueryHandler(faq_noop_handler, pattern="faq_noop"))
     
-    # === СТАРЫЕ ОБРАБОТЧИКИ (совместимость) ===
-    dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
-    dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
+    # === ОСТАВЛЯЕМ button_callback, но он теперь пропускает faq_* ===
     dp.add_handler(CallbackQueryHandler(button_callback))
     
     # === ОБРАБОТЧИКИ СООБЩЕНИЙ ===
@@ -1210,7 +1164,7 @@ def main():
     time.sleep(30)
 
     max_retries = 10
-    base_delay = 5  # начальная задержка 5 секунд
+    base_delay = 5
     for attempt in range(max_retries):
         try:
             updater.start_polling()
@@ -1219,7 +1173,7 @@ def main():
         except Exception as e:
             logger.error(f"Попытка {attempt+1}/{max_retries} не удалась: {e}")
             if attempt < max_retries - 1:
-                delay = base_delay * (2 ** attempt)  # 5, 10, 20, 40...
+                delay = base_delay * (2 ** attempt)
                 logger.info(f"Повторная попытка через {delay} секунд...")
                 time.sleep(delay)
             else:
