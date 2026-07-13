@@ -1,4 +1,4 @@
-# bot.py - Финальная версия с отправкой APK-файла
+# bot.py - Финальная версия с новой архитектурой FAQ
 
 import logging
 import json
@@ -18,6 +18,16 @@ from database import init_db, save_user, save_question, save_answer, get_stats, 
 # === НОВАЯ АРХИТЕКТУРА ПОИСКА ===
 from repository import FAQRepository
 from search import SearchEngine
+
+# === НОВЫЕ ОБРАБОТЧИКИ FAQ ===
+from faq_handlers import (
+    faq_categories_handler,
+    faq_category_handler,
+    faq_answer_handler,
+    faq_search_handler,
+    faq_search_result,
+    faq_noop_handler
+)
 
 # === ВЕРСИЯ БОТА ===
 BOT_VERSION = "2.0"
@@ -128,14 +138,14 @@ def push_to_github():
         logger.error(f"Ошибка push: {e}")
         return False, f"❌ Ошибка: {e}"
 
-# === КЕШИРОВАНИЕ ===
+# === КЕШИРОВАНИЕ (старое, для совместимости) ===
 
 def invalidate_faq_cache():
     global _faq_cache, _faq_cache_file
     _faq_cache = None
     _faq_cache_file = None
-    repo.invalidate()
-    logger.info("🔄 Кеш FAQ сброшен")
+    repo.reload()  # обновляем репозиторий
+    logger.info("🔄 Кеш FAQ сброшен и репозиторий перезагружен")
 
 def normalize_text(text):
     text = text.lower()
@@ -205,7 +215,7 @@ def start(update: Update, context):
     save_user(user)
     
     keyboard = [
-        [InlineKeyboardButton("📋 Частые вопросы", callback_data="faq")],
+        [InlineKeyboardButton("📋 Частые вопросы", callback_data="faq_categories")],  # ← заменено на faq_categories
         [InlineKeyboardButton("📞 Связаться с оператором", callback_data="operator")],
         [InlineKeyboardButton("📢 Официальный канал", url="https://t.me/vipg_channel")],
         [InlineKeyboardButton("📱 Скачать приложение", callback_data="apk")],
@@ -327,12 +337,15 @@ def add_faq(update: Update, context):
         faq_list.append({
             'id': new_id,
             'slug': f"faq_{new_id}",
+            'title': answer[:50] if answer else keywords[0].capitalize(),  # временный title
+            'category': 'other',
+            'sort': new_id * 10,
             'keywords': keywords,
             'answer': answer
         })
         
         save_faq_local(faq_list)
-        invalidate_faq_cache()
+        invalidate_faq_cache()  # обновит репозиторий
         success, message = push_to_github()
         
         if success:
@@ -398,6 +411,9 @@ def edit_faq(update: Update, context):
             if faq.get('id') == faq_id:
                 faq['keywords'] = keywords
                 faq['answer'] = new_answer
+                # обновляем title (если есть поле)
+                if 'title' in faq:
+                    faq['title'] = new_answer[:50] if new_answer else keywords[0].capitalize()
                 found = True
                 break
         
@@ -473,9 +489,11 @@ def list_faq(update: Update, context):
     for faq in faq_list:
         faq_id = faq.get('id')
         slug = faq.get('slug', 'no-slug')
+        title = faq.get('title', faq.get('keywords', [''])[0].capitalize())
         keywords = faq.get('keywords', [])
         answer = faq.get('answer', '')
-        text += f"*ID {faq_id}* ({slug}): {', '.join(keywords)}\n"
+        text += f"*ID {faq_id}* ({slug}): {title}\n"
+        text += f"📌 Ключи: {', '.join(keywords)}\n"
         text += f"📝 {answer[:100]}{'...' if len(answer) > 100 else ''}\n\n"
     
     update.message.reply_text(text, parse_mode='Markdown')
@@ -498,9 +516,10 @@ def findfaq_command(update: Update, context):
     results = []
     for faq in faq_list:
         keywords_str = ' '.join(faq.get('keywords', [])).lower()
+        title = faq.get('title', '').lower()
         answer = faq.get('answer', '').lower()
         
-        if search_word in keywords_str or search_word in answer:
+        if search_word in keywords_str or search_word in title or search_word in answer:
             results.append(faq)
     
     if not results:
@@ -511,9 +530,9 @@ def findfaq_command(update: Update, context):
     for faq in results[:5]:
         faq_id = faq.get('id')
         slug = faq.get('slug', 'no-slug')
-        keywords = faq.get('keywords', [])
+        title = faq.get('title', faq.get('keywords', [''])[0].capitalize())
         answer = faq.get('answer', '')
-        text += f"*ID {faq_id}* ({slug}): {', '.join(keywords)}\n"
+        text += f"*ID {faq_id}* ({slug}): {title}\n"
         text += f"📝 {answer}\n\n"
     
     if len(results) > 5:
@@ -768,20 +787,10 @@ def admin_reply(update: Update, context):
         update.message.reply_text(f"❌ Ошибка: {e}")
 
 def faq_list_callback(update: Update, context):
+    # Этот обработчик больше не используется, оставлен для совместимости
     query = update.callback_query
     query.answer()
-    
-    faq_list = load_faq()
-    if not faq_list:
-        query.edit_message_text("📋 Список вопросов пуст.")
-        return
-    
-    text = "📋 *Частые вопросы:*\n\n"
-    for idx, faq in enumerate(faq_list, 1):
-        keywords = faq.get('keywords', [])
-        text += f"{idx}. {keywords[0].capitalize()}\n"
-    
-    query.edit_message_text(text, parse_mode='Markdown')
+    query.edit_message_text("📚 Пожалуйста, выберите категорию в главном меню.")
 
 def operator_request(update: Update, context):
     query = update.callback_query
@@ -853,7 +862,6 @@ def button_callback(update: Update, context):
     
     elif data == "apk":
         chat_id = query.message.chat.id
-        # === ОБНОВЛЁННАЯ ССЫЛКА ===
         apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.1/VIPGame.apk"
         
         query.edit_message_text("⏳ Загружаю приложение...")
@@ -868,7 +876,6 @@ def button_callback(update: Update, context):
                     caption="📱 *VIP Game для Android*\n\nНажмите на файл, чтобы скачать и установить.\n\n📌 *Как установить:*\n1. Откройте файл\n2. Разрешите установку из неизвестных источников\n3. Нажмите «Установить»",
                     parse_mode='Markdown'
                 )
-                # Удаляем сообщение "Загружаю..."
                 context.bot.delete_message(chat_id=chat_id, message_id=query.message.message_id)
             else:
                 query.edit_message_text("❌ Не удалось загрузить файл. Попробуйте позже.")
@@ -1004,6 +1011,9 @@ def handle_admin_message(update: Update, context):
             faq_list.append({
                 'id': new_id,
                 'slug': f"faq_{new_id}",
+                'title': answer[:50] if answer else keywords[0].capitalize(),
+                'category': 'other',
+                'sort': new_id * 10,
                 'keywords': keywords,
                 'answer': answer
             })
@@ -1142,6 +1152,14 @@ def main():
     dp.add_handler(CommandHandler("version", version_command))
     dp.add_handler(CommandHandler("apk", send_apk_document))
     
+    # Новые обработчики FAQ
+    dp.add_handler(CallbackQueryHandler(faq_categories_handler, pattern="faq_categories"))
+    dp.add_handler(CallbackQueryHandler(faq_category_handler, pattern="faq_cat_"))
+    dp.add_handler(CallbackQueryHandler(faq_answer_handler, pattern="faq_"))
+    dp.add_handler(CallbackQueryHandler(faq_search_handler, pattern="faq_search"))
+    dp.add_handler(CallbackQueryHandler(faq_noop_handler, pattern="faq_noop"))
+    
+    # Старые обработчики (оставлены для совместимости, но не используются)
     dp.add_handler(CallbackQueryHandler(faq_list_callback, pattern="faq"))
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
@@ -1152,10 +1170,20 @@ def main():
         handle_admin_message
     ))
     
+    # Обработчик для текстового поиска (после всех команд)
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+    # Поиск по FAQ будет обрабатываться в faq_search_result (но его нужно вызывать после всех других текстовых)
+    # Поэтому добавим его отдельно, но он уже зарегистрирован через faq_search_result как MessageHandler.
+    # Примечание: в faq_search_handler мы устанавливаем waiting_for_faq_search, и потом ловим текст.
+    # Поэтому нужно добавить обработчик текста для поиска, но он должен быть после основного handle_message?
+    # Лучше добавить его как отдельный обработчик, но с проверкой состояния.
+    # Так как у нас уже есть faq_search_result, который проверяет состояние, его нужно добавить в dp.
+    # Добавим его отдельно.
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, faq_search_result))
+    
     dp.add_handler(MessageHandler(Filters.photo, handle_message))
     dp.add_handler(MessageHandler(Filters.video, handle_message))
     dp.add_handler(MessageHandler(Filters.document, handle_message))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
     
     dp.add_error_handler(error_handler)
     
