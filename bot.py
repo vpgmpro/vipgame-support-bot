@@ -398,17 +398,17 @@ def list_faq(update: Update, context):
         update.message.reply_text("📋 База знаний пуста.")
         return
     
-    text = "📚 *База знаний:*\n\n"
-    # Ограничиваем вывод первыми 20 вопросами, чтобы не превысить лимит Telegram (4096 символов)
-    for faq in faq_list[:20]:
+    # Компактный вывод: только ID, заголовок и slug
+    text = "📚 *База знаний (первые 30 записей):*\n\n"
+    for faq in faq_list[:30]:
         faq_id = faq.get('id')
         slug = faq.get('slug', 'no-slug')
-        title = faq.get('title', faq.get('keywords', [''])[0].capitalize())
-        keywords = faq.get('keywords', [])
-        answer = faq.get('answer', '')
-        text += f"*ID {faq_id}* ({slug}): {title}\n"
-        text += f"📌 Ключи: {', '.join(keywords)}\n"
-        text += f"📝 {answer[:100]}{'...' if len(answer) > 100 else ''}\n\n"
+        title = faq.get('title', 'Без названия')
+        text += f"*{faq_id}*. {title} (`{slug}`)\n"
+    
+    total = len(faq_list)
+    if total > 30:
+        text += f"\n... и ещё {total - 30} записей. Используйте /findfaq для поиска."
     
     update.message.reply_text(text, parse_mode='Markdown')
 
