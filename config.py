@@ -73,5 +73,6 @@ STRICT_MODE = False  # Для продакшена оставить False
 # Список допустимых категорий (для валидации)
 VALID_CATEGORIES = {
     "general", "account", "games", "status",
-    "crystals_market", "megainviter", "about_project", "support"
+    "crystals_market", "megainviter", "about_project", "support",
+    "other"   # ← добавлено
 }
