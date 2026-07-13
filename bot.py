@@ -1,4 +1,4 @@
-# bot.py - Финальная версия (без button_callback)
+# bot.py - Финальная версия с новой архитектурой FAQ
 
 import logging
 import json
@@ -139,7 +139,7 @@ def push_to_github():
         logger.error(f"Ошибка push: {e}")
         return False, f"❌ Ошибка: {e}"
 
-# === КЕШИРОВАНИЕ (старое, для совместимости) ===
+# === КЕШИРОВАНИЕ ===
 
 def invalidate_faq_cache():
     global _faq_cache, _faq_cache_file
@@ -274,9 +274,6 @@ def help_command(update: Update, context):
         update.message.reply_text(text, parse_mode='Markdown')
 
 def send_apk_document(update: Update, context):
-    user = update.effective_user
-    chat_id = update.effective_chat.id
-    
     apk_url = "https://github.com/vpgmpro/vipgame-support-bot/releases/download/v1.1/VIPGame.apk"
     
     msg = update.message.reply_text("⏳ Загружаю приложение...")
@@ -285,13 +282,13 @@ def send_apk_document(update: Update, context):
         response = requests.get(apk_url, stream=True)
         if response.status_code == 200:
             context.bot.send_document(
-                chat_id=chat_id,
+                chat_id=update.effective_chat.id,
                 document=response.content,
                 filename="VIPGame.apk",
                 caption="📱 *VIP Game для Android*\n\nНажмите на файл, чтобы скачать и установить.\n\n📌 *Как установить:*\n1. Откройте файл\n2. Разрешите установку из неизвестных источников\n3. Нажмите «Установить»",
                 parse_mode='Markdown'
             )
-            context.bot.delete_message(chat_id=chat_id, message_id=msg.message_id)
+            context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg.message_id)
         else:
             update.message.reply_text("❌ Не удалось загрузить файл. Попробуйте позже.")
     except Exception as e:
@@ -465,9 +462,7 @@ def list_faq(update: Update, context):
     update.message.reply_text(text, parse_mode='Markdown')
 
 def findfaq_command(update: Update, context):
-    user = update.effective_user
-    
-    if not is_admin(user.id):
+    if not is_admin(update.effective_user.id):
         update.message.reply_text("⛔ У вас нет прав администратора.")
         return
     
@@ -787,15 +782,14 @@ def send_to_admin(context, user, question):
         return False
 
 def button_callback(update: Update, context):
-    # Этот обработчик больше не нужен, его функции перенесены в handle_admin_message
-    # Оставляем только для обратной совместимости, но он не должен перехватывать FAQ
+    # ⚠️ Этот обработчик больше НЕ ИСПОЛЬЗУЕТСЯ для FAQ
+    # Он оставлен только для обратной совместимости со старыми кнопками
+    # (reply_ и addfaq_ обрабатываются в handle_admin_message)
     query = update.callback_query
     query.answer()
-    # Игнорируем все запросы, которые начинаются с faq_
-    if query.data.startswith(('faq_', 'faq_cat_', 'faq_ans_', 'faq_search', 'faq_noop')):
-        return
     
     data = query.data
+    
     if data.startswith('reply_'):
         user_id = int(data.split('_')[1])
         context.user_data['reply_to_user'] = user_id
@@ -1117,7 +1111,7 @@ def main():
     dp.add_handler(CallbackQueryHandler(faq_search_handler, pattern="faq_search"))
     dp.add_handler(CallbackQueryHandler(faq_noop_handler, pattern="faq_noop"))
     
-    # === ОСТАВЛЯЕМ button_callback, но он теперь пропускает faq_* ===
+    # === СТАРЫЕ ОБРАБОТЧИКИ (только для reply_ и addfaq_, apk) ===
     dp.add_handler(CallbackQueryHandler(button_callback))
     
     # === ОБРАБОТЧИКИ СООБЩЕНИЙ ===
@@ -1158,7 +1152,7 @@ def main():
     logger.info("  /apk - скачать приложение для Android")
     logger.info("📎 Бот принимает фото, видео и файлы")
 
-    # === СБРОС WEBHOOK И ПОВТОРНЫЕ ПОПЫТКИ С БОЛЬШОЙ ЗАДЕРЖКОЙ ===
+    # === СБРОС WEBHOOK И ПОВТОРНЫЕ ПОПЫТКИ ===
     updater.bot.delete_webhook()
     logger.info("⏳ Ожидание 30 секунд перед запуском...")
     time.sleep(30)
