@@ -11,6 +11,7 @@ class FAQ:
     sort: int = 0
     keywords: List[str] = field(default_factory=list)
     answer: str = ""
+    aliases: List[str] = field(default_factory=list)  # ← добавлено
 
 
 # ====== СТАРЫЕ КЛАССЫ ДЛЯ ПОИСКА (восстановлены) ======
