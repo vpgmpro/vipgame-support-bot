@@ -1,4 +1,4 @@
-# bot.py - Финальная версия с новой архитектурой FAQ
+# bot.py - Финальная версия (с исправленными конфликтами)
 
 import logging
 import json
@@ -13,7 +13,7 @@ from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 
-from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE, CHANNEL_ID
+from config import TOKEN, ADMIN_CHAT_ID, FAQ_FILE, CHANNEL_ID, PORT
 from database import init_db, save_user, save_question, save_answer, get_stats, get_unanswered_questions, get_last_questions, get_total_users
 
 # === НОВАЯ АРХИТЕКТУРА ПОИСКА ===
@@ -76,7 +76,7 @@ GITHUB_FILE_PATH = os.environ.get('GITHUB_FILE_PATH', 'faq.json')
 init_db()
 
 # === НОВАЯ АРХИТЕКТУРА ===
-repo = FAQRepository("faq.json")
+repo = FAQRepository(FAQ_FILE)
 search = SearchEngine(repo)
 
 # === РАБОТА С ФАЙЛАМИ ===
