@@ -1,4 +1,4 @@
-# bot.py - Финальная версия с новой архитектурой FAQ
+# bot.py - Финальная версия с новой архитектурой FAQ и защитой от конфликтов
 
 import logging
 import json
@@ -7,6 +7,7 @@ import re
 import requests
 import base64
 import threading
+import time  # ← добавлено для паузы
 from datetime import datetime
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -968,7 +969,7 @@ def handle_admin_message(update: Update, context):
                     caption=f"📨 *Ответ поддержки:*\n\n{caption}",
                     parse_mode='Markdown'
                 )
-                update.message.reply_text(f"✅ Файл отправлен пользователю {target_user_id}!")
+                update.message.reply_text(f"✅ Файл отправлено пользователю {target_user_id}!")
             except Exception as e:
                 update.message.reply_text(f"❌ Ошибка: {e}")
         
@@ -1085,7 +1086,7 @@ def handle_message(update: Update, context):
             document=document.file_id,
             caption=f"📄 ФАЙЛ от @{user.username or user.first_name} (ID: {user.id})\n\n{caption}"
         )
-        update.message.reply_text("✅ Ваш файл отправлен оператору!")
+        update.message.reply_text("✅ Ваш файл отправлено оператору!")
         return
     
     question = update.message.text
@@ -1156,31 +1157,24 @@ def main():
     # === НОВЫЕ ОБРАБОТЧИКИ FAQ (callback) ===
     dp.add_handler(CallbackQueryHandler(faq_categories_handler, pattern="faq_categories"))
     dp.add_handler(CallbackQueryHandler(faq_category_handler, pattern="faq_cat_"))
-    dp.add_handler(CallbackQueryHandler(faq_answer_handler, pattern="faq_ans_"))   # изменено с "faq_"
+    dp.add_handler(CallbackQueryHandler(faq_answer_handler, pattern="faq_ans_"))
     dp.add_handler(CallbackQueryHandler(faq_search_handler, pattern="faq_search"))
     dp.add_handler(CallbackQueryHandler(faq_noop_handler, pattern="faq_noop"))
     
     # === СТАРЫЕ ОБРАБОТЧИКИ (совместимость) ===
     dp.add_handler(CallbackQueryHandler(operator_request, pattern="operator"))
     dp.add_handler(CallbackQueryHandler(help_command, pattern="help"))
-    dp.add_handler(CallbackQueryHandler(button_callback))  # без паттерна – обрабатывает только reply_ и addfaq_, apk
+    dp.add_handler(CallbackQueryHandler(button_callback))
     
     # === ОБРАБОТЧИКИ СООБЩЕНИЙ ===
-    # 1. Сначала проверяем, не ожидает ли пользователь поиска по FAQ
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, faq_search_result))
-    
-    # 2. Затем обрабатываем сообщения от администратора (если он в режиме поста/ответа/добавления)
     dp.add_handler(MessageHandler(
         Filters.text & ~Filters.command & Filters.user(ADMIN_CHAT_ID),
         handle_admin_message
     ))
-    
-    # 3. Обработка фото, видео, документов (пользовательские)
     dp.add_handler(MessageHandler(Filters.photo, handle_message))
     dp.add_handler(MessageHandler(Filters.video, handle_message))
     dp.add_handler(MessageHandler(Filters.document, handle_message))
-    
-    # 4. Обработка текстовых сообщений (пользовательские) – после поиска
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
     
     dp.add_error_handler(error_handler)
@@ -1209,7 +1203,11 @@ def main():
     logger.info("  /sync - синхронизировать с GitHub")
     logger.info("  /apk - скачать приложение для Android")
     logger.info("📎 Бот принимает фото, видео и файлы")
-    
+
+    # === ЗАЩИТА ОТ КОНФЛИКТОВ ===
+    updater.bot.delete_webhook()   # сбрасываем возможный старый webhook
+    time.sleep(1)                 # небольшая пауза перед стартом
+
     updater.start_polling()
     updater.idle()
 
